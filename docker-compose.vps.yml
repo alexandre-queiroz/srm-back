@@ -1,0 +1,6 @@
+services:
+  worker:
+    build: .
+    command: python -m app.workers.lote_processor
+    env_file: .env
+    restart: unless-stopped
