@@ -49,7 +49,7 @@ def _random_digits(n: int) -> str:
 def _chave_nfe(cnpj: str, aamm: str, serie: str, numero: str) -> str:
     codigo_uf = "35"
     codigo_numerico = _random_digits(8)
-    raw = f"{codigo_uf}{aamm}{cnpj}{serie.zfill(3)}{numero.zfill(9)}1{codigo_numerico}"
+    raw = f"{codigo_uf}{aamm}{cnpj}55{serie.zfill(3)}{numero.zfill(9)}1{codigo_numerico}"
     # dígito verificador simplificado (módulo 11)
     weights = list(range(2, 10)) * 6
     total = sum(int(d) * w for d, w in zip(reversed(raw), weights))
