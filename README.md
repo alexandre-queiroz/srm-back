@@ -100,6 +100,88 @@ Motor de precificação e liquidação de recebíveis para a SRM Asset. Respons�
 
 ---
 
+## Git Workflow
+
+### Estratégia de branching: GitHub Flow
+
+Este projeto adota **GitHub Flow** — uma estratégia trunk-based simplificada com uma única branch de longa duração (`main`).
+
+```
+main ──●──────────────────●──────────────────●──────────────────▶
+       │                  ↑                  ↑
+       └── feat/x ────────┘  └── fix/y ──────┘
+```
+
+**Por que GitHub Flow e não Git Flow?**
+
+| Critério | Git Flow | GitHub Flow | Escolha |
+|---|---|---|---|
+| Branches de longa duração | `main` + `develop` + `release/*` + `hotfix/*` | apenas `main` | GitHub Flow — menos overhead |
+| Frequência de deploy | releases agendadas | deploy contínuo | GitHub Flow — Vercel deploya a cada merge |
+| Tamanho do time | times grandes com múltiplos releases paralelos | times pequenos ou entrega contínua | GitHub Flow — projeto de entrega única |
+| Hotfix em produção | branch `hotfix/` dedicada | branch a partir da `main` | GitHub Flow — mesmo fluxo de qualquer feature |
+
+Git Flow seria a escolha certa se o projeto tivesse múltiplos ambientes de release em paralelo (ex: `v1.x` em produção enquanto `v2.x` está em QA). Para este projeto — com deploy contínuo na Vercel e um único ambiente de produção — o overhead do Git Flow não se justifica.
+
+### Convenções de nome de branch
+
+| Prefixo | Uso |
+|---|---|
+| `feat/` | nova funcionalidade |
+| `fix/` | correção de bug |
+| `docs/` | documentação |
+| `chore/` | configuração, CI, dependências |
+| `refactor/` | refatoração sem mudança de comportamento |
+
+### Fluxo de uma feature
+
+```bash
+# 1. Partir sempre da main atualizada
+git checkout main && git pull
+
+# 2. Criar branch
+git checkout -b feat/exchange-rate-engine
+
+# 3. Desenvolver com commits atômicos (Conventional Commits)
+git commit -m "feat: add exchange rate model and migration"
+git commit -m "feat: implement FX job with primary/fallback sources"
+git commit -m "test: unit tests for FX service circuit breaker"
+
+# 4. Rebase interativo antes do PR para histórico limpo
+git rebase -i origin/main
+
+# 5. Abrir PR — CI roda lint + testes automaticamente
+gh pr create ...
+
+# 6. Merge squash ou merge commit após aprovação
+# 7. Taguear se for entrega de versão
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+### Simulação de gestão de crise
+
+**Cenário:** um bug crítico foi mergeado na `main` inadvertidamente.
+
+A abordagem segura é `git revert` — cria um commit que desfaz as mudanças sem reescrever o histórico, preservando rastreabilidade em produção.
+
+```bash
+# Identificar o commit problemático
+git log --oneline main
+
+# Reverter de forma segura (não destrói histórico)
+git revert <commit-hash> --no-edit
+
+# Fazer push direto na main (hotfix de emergência)
+git push origin main
+
+# Após correção real, cherry-pick do fix para branches em andamento
+git cherry-pick <fix-commit-hash>
+```
+
+`git reset --hard` é evitado em branches públicas pois reescreve histórico e força outros desenvolvedores a rebases manuais. `revert` é sempre preferível em produção.
+
+---
+
 ## Fora do Escopo
 
 | Item                                 | Motivo                                                                  |
