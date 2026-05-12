@@ -160,6 +160,10 @@ As decisões que envolvem trade-offs de negócio e arquitetura estão documentad
 
 ---
 
+## Arquitetura
+
+- [Diagrama C4 — Context e Container](./docs/c4-diagrams.md) — atores, sistemas externos, containers e dependências
+
 ## Modelagem de Dados
 
 - [Diagrama ER](./docs/er-diagram.md) — entidades, relacionamentos e decisões de modelagem
