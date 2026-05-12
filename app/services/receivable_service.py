@@ -102,7 +102,10 @@ def ingest_xml(
                     db, inst.invoice_key, inst.installment_number
                 )
                 if existing:
-                    span.add_event("receivable.duplicate", {"invoice_key": inst.invoice_key, "installment": inst.installment_number})
+                    span.add_event(
+                        "receivable.duplicate",
+                        {"invoice_key": inst.invoice_key, "installment": inst.installment_number},
+                    )
                     items.append(
                         UploadItem(
                             invoice_key=inst.invoice_key,
@@ -148,7 +151,10 @@ def ingest_xml(
             except IntegrityError as e:
                 db.rollback()
                 upload = xml_upload_repository.get_by_id(db, upload.id)
-                span.add_event("receivable.integrity_error", {"invoice_key": inst.invoice_key, "error": str(e.orig)})
+                span.add_event(
+                    "receivable.integrity_error",
+                    {"invoice_key": inst.invoice_key, "error": str(e.orig)},
+                )
                 items.append(
                     UploadItem(
                         invoice_key=inst.invoice_key,

@@ -80,11 +80,15 @@ def _make_xml(
     dest_cnpj: str = DEST_CNPJ,
     vprod: str = "10000.00",
     vdesc: str = "0.00",
-    dups: str = '<dup><nDup>001</nDup><dVenc>2026-03-15</dVenc><vDup>10000.00</vDup></dup>',
+    dups: str = "<dup><nDup>001</nDup><dVenc>2026-03-15</dVenc><vDup>10000.00</vDup></dup>",
 ) -> bytes:
     return NFE_TEMPLATE.format(
-        chave=chave, emit_cnpj=emit_cnpj, dest_cnpj=dest_cnpj,
-        vprod=vprod, vdesc=vdesc, dups=dups,
+        chave=chave,
+        emit_cnpj=emit_cnpj,
+        dest_cnpj=dest_cnpj,
+        vprod=vprod,
+        vdesc=vdesc,
+        dups=dups,
     ).encode("utf-8")
 
 
@@ -153,6 +157,7 @@ class TestParseErrors:
         xml = _make_xml().decode().replace("<cobr>", "").replace("</cobr>", "")
         # Remove all dup and fat content between cobr tags
         import re
+
         xml = re.sub(r"<cobr>.*?</cobr>", "", xml, flags=re.DOTALL)
         with pytest.raises(XMLParseError, match="cobr"):
             parse(xml.encode())
@@ -163,6 +168,6 @@ class TestParseErrors:
             parse(xml.encode())
 
     def test_zero_value_dup_raises(self):
-        dups = '<dup><nDup>001</nDup><dVenc>2026-03-15</dVenc><vDup>0.00</vDup></dup>'
+        dups = "<dup><nDup>001</nDup><dVenc>2026-03-15</dVenc><vDup>0.00</vDup></dup>"
         with pytest.raises(XMLParseError, match="valor inválido"):
             parse(_make_xml(dups=dups))

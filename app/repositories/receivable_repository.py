@@ -9,9 +9,7 @@ def get_by_id(db: Session, receivable_id: uuid.UUID) -> Receivable | None:
     return db.query(Receivable).filter(Receivable.id == receivable_id).first()
 
 
-def get_by_invoice_installment(
-    db: Session, invoice_key: str, installment_number: str
-) -> Receivable | None:
+def get_by_invoice_installment(db: Session, invoice_key: str, installment_number: str) -> Receivable | None:
     return (
         db.query(Receivable)
         .filter(

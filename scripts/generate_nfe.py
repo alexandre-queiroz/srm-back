@@ -13,13 +13,12 @@ Os XMLs são salvos em /tmp/nfe/ e opcionalmente enviados ao R2.
 import argparse
 import random
 import sys
-import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 from string import digits
-from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 sys.path.insert(0, ".")
 
@@ -210,7 +209,9 @@ def generate_nfe(
         dup = SubElement(cobr, "dup")
         SubElement(dup, "nDup").text = str(i).zfill(3)
         SubElement(dup, "dVenc").text = due.isoformat()
-        SubElement(dup, "vDup").text = str(valor_dup if i < installments else valor_total - valor_dup * (installments - 1))
+        SubElement(dup, "vDup").text = str(
+            valor_dup if i < installments else valor_total - valor_dup * (installments - 1)
+        )
 
     # Pagamento
     pag = SubElement(inf_nfe, "pag")
@@ -256,7 +257,10 @@ def main() -> None:
         filepath = output_dir / f"nfe_{chave}.xml"
         filepath.write_bytes(xml_bytes)
 
-        print(f"  [{i+1}/{args.count}] NF-e {numero} | {cedente['razao_social'][:20]} → {sacado['razao_social'][:20]} | R$ {valor:,.2f} | {args.installments}x")
+        cedente_name = cedente["razao_social"][:20]
+        sacado_name = sacado["razao_social"][:20]
+        label = f"  [{i + 1}/{args.count}] NF-e {numero} | {cedente_name} → {sacado_name}"
+        print(f"{label} | R$ {valor:,.2f} | {args.installments}x")
         print(f"         {filepath}")
 
     print(f"\n{args.count} NF-e(s) gerada(s) em {output_dir}")
