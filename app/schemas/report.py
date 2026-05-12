@@ -1,12 +1,12 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from app.schemas.base import AppSchema
 
 
-class GroupBy(str, Enum):
+class GroupBy(StrEnum):
     assignor = "assignor"
     drawee = "drawee"
     none = "none"

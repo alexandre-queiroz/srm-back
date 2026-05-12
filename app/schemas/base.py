@@ -9,7 +9,7 @@ class AppSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class Page(AppSchema, Generic[T]):
+class Page(AppSchema, Generic[T]):  # noqa: UP046
     items: list[T]
     total: int
     page: int
