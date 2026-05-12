@@ -198,7 +198,24 @@ Isso sobe:
 docker compose exec api alembic upgrade head
 ```
 
-### 4. Verificar
+### 4. Rodar o seed
+
+```bash
+docker compose exec api python scripts/seed.py
+```
+
+O seed insere:
+- 5 tipos de recebível (`product_types`) com spreads pré-configurados
+- Parâmetro de taxa base (`base_rate_annual = 0.1375`)
+- Usuário admin: `admin@srm.com.br` / `Admin@2026`
+
+Para recriar os registros do zero:
+
+```bash
+docker compose exec api python scripts/seed.py --reset
+```
+
+### 5. Verificar
 
 - API: http://localhost:8000/health
 - Docs (Swagger): http://localhost:8000/docs
@@ -213,4 +230,22 @@ Para remover o volume do banco junto:
 
 ```bash
 docker compose down -v
+```
+
+---
+
+## Ambiente de produção
+
+| Recurso | URL |
+|---|---|
+| API | https://srm-back-psi.vercel.app |
+| Docs | https://srm-back-psi.vercel.app/docs |
+| Banco | Neon PostgreSQL (sa-east-1) |
+
+### Rodar seed em produção
+
+```bash
+# Exportar a DATABASE_URL do Neon antes de executar
+export DATABASE_URL="postgresql://..."
+python scripts/seed.py
 ```
