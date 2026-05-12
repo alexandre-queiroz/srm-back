@@ -14,12 +14,13 @@ class Receivable(Base):
 
     __table_args__ = (
         UniqueConstraint("invoice_key", "installment_number", name="uq_receivables_installment"),
-        CheckConstraint("status IN ('available', 'in_batch', 'anticipated')", name="chk_receivables_status"),
+        CheckConstraint("status IN ('available', 'in_batch', 'anticipated', 'invalid')", name="chk_receivables_status"),
         CheckConstraint("face_value > 0", name="chk_receivables_face_value_positive"),
         CheckConstraint("assignor_id <> drawee_id", name="chk_receivables_assignor_drawee_different"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    xml_upload_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     assignor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     drawee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     product_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -39,5 +40,6 @@ class Receivable(Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     xml_storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="available")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)

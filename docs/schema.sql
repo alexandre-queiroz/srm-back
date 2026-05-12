@@ -97,6 +97,7 @@ CREATE TABLE batches (
 -- ---------------------------------------------------------------------------
 CREATE TABLE receivables (
     id                  UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    xml_upload_id       UUID           REFERENCES xml_uploads(id),   -- nullable: entries without XML
     assignor_id         UUID           NOT NULL REFERENCES companies(id),
     drawee_id           UUID           NOT NULL REFERENCES companies(id),
     product_type_id     UUID           NOT NULL REFERENCES product_types(id),
@@ -119,18 +120,40 @@ CREATE TABLE receivables (
 
     -- Audit
     xml_storage_url     TEXT,
-    status              VARCHAR(20)    NOT NULL DEFAULT 'available',  -- available | in_batch | anticipated
+    error_message       TEXT,
+    status              VARCHAR(20)    NOT NULL DEFAULT 'available',  -- available | in_batch | anticipated | invalid
     created_at          TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
 
     CONSTRAINT uq_receivables_installment
         UNIQUE (invoice_key, installment_number),
     CONSTRAINT chk_receivables_status
-        CHECK (status IN ('available', 'in_batch', 'anticipated')),
+        CHECK (status IN ('available', 'in_batch', 'anticipated', 'invalid')),
     CONSTRAINT chk_receivables_face_value_positive
         CHECK (face_value > 0),
     CONSTRAINT chk_receivables_assignor_drawee_different
         CHECK (assignor_id <> drawee_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- XML uploads — audit log for every NF-e upload attempt
+-- ---------------------------------------------------------------------------
+CREATE TABLE xml_uploads (
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID         NOT NULL REFERENCES users(id),
+    filename            VARCHAR(255) NOT NULL,
+    status              VARCHAR(20)  NOT NULL DEFAULT 'processed',  -- processed | failed
+    error_message       TEXT,
+    xml_storage_url     TEXT,
+    receivables_created INTEGER      NOT NULL DEFAULT 0,
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_xml_uploads_status
+        CHECK (status IN ('processed', 'failed'))
+);
+
+CREATE INDEX idx_xml_uploads_user_id    ON xml_uploads (user_id);
+CREATE INDEX idx_xml_uploads_status     ON xml_uploads (status);
+CREATE INDEX idx_xml_uploads_created_at ON xml_uploads (created_at DESC);
 
 -- ---------------------------------------------------------------------------
 -- Batch items — join between batches and receivables

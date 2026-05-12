@@ -7,6 +7,7 @@ from app.models.receivable import Receivable
 from app.models.system_param import SystemParam
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.models.xml_upload import XmlUpload
 
 __all__ = [
     "Base",
@@ -19,4 +20,5 @@ __all__ = [
     "SystemParam",
     "Transaction",
     "User",
+    "XmlUpload",
 ]
