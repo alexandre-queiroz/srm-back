@@ -259,7 +259,7 @@ def main() -> None:
 
         cedente_name = cedente["razao_social"][:20]
         sacado_name = sacado["razao_social"][:20]
-        label = f"  [{i+1}/{args.count}] NF-e {numero} | {cedente_name} → {sacado_name}"
+        label = f"  [{i + 1}/{args.count}] NF-e {numero} | {cedente_name} → {sacado_name}"
         print(f"{label} | R$ {valor:,.2f} | {args.installments}x")
         print(f"         {filepath}")
 
