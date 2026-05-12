@@ -84,16 +84,18 @@ def preview_batch(
     items = []
     for item in preview.items:
         drawee = _company_response(db, item.drawee_id)
-        items.append(BatchPreviewItem(
-            receivable_id=item.receivable_id,
-            invoice_key=item.invoice_key,
-            installment_number=item.installment_number,
-            drawee=drawee,
-            face_value=item.face_value,
-            currency_code=item.currency_code,
-            term_days=item.term_days,
-            present_value=item.present_value,
-        ))
+        items.append(
+            BatchPreviewItem(
+                receivable_id=item.receivable_id,
+                invoice_key=item.invoice_key,
+                installment_number=item.installment_number,
+                drawee=drawee,
+                face_value=item.face_value,
+                currency_code=item.currency_code,
+                term_days=item.term_days,
+                present_value=item.present_value,
+            )
+        )
 
     return BatchPreviewResponse(
         batch_id=preview.batch_id,
@@ -157,15 +159,17 @@ def list_batches(
     result = []
     for batch in batches:
         assignor = _company_response(db, batch.assignor_id)
-        result.append(BatchResponse(
-            id=batch.id,
-            assignor=assignor,
-            status=batch.status,
-            rejection_reasons=batch.rejection_reasons,
-            total_receivables=len(batch.receivables),
-            created_at=batch.created_at,
-            updated_at=batch.updated_at,
-        ))
+        result.append(
+            BatchResponse(
+                id=batch.id,
+                assignor=assignor,
+                status=batch.status,
+                rejection_reasons=batch.rejection_reasons,
+                total_receivables=len(batch.receivables),
+                created_at=batch.created_at,
+                updated_at=batch.updated_at,
+            )
+        )
     return result
 
 
@@ -194,16 +198,18 @@ def get_batch(
         for r in batch.receivables:
             txn = txn_by_receivable.get(r.id)
             drawee = _company_response(db, r.drawee_id)
-            items.append(BatchPreviewItem(
-                receivable_id=r.id,
-                invoice_key=r.invoice_key,
-                installment_number=r.installment_number,
-                drawee=drawee,
-                face_value=r.face_value,
-                currency_code=r.currency_code,
-                term_days=txn.term_days if txn else 0,
-                present_value=txn.present_value if txn else r.face_value,
-            ))
+            items.append(
+                BatchPreviewItem(
+                    receivable_id=r.id,
+                    invoice_key=r.invoice_key,
+                    installment_number=r.installment_number,
+                    drawee=drawee,
+                    face_value=r.face_value,
+                    currency_code=r.currency_code,
+                    term_days=txn.term_days if txn else 0,
+                    present_value=txn.present_value if txn else r.face_value,
+                )
+            )
     else:
         try:
             preview = batch_service.preview_batch(db=db, batch_id=batch_id)
@@ -212,16 +218,18 @@ def get_batch(
         items = []
         for item in preview.items:
             drawee = _company_response(db, item.drawee_id)
-            items.append(BatchPreviewItem(
-                receivable_id=item.receivable_id,
-                invoice_key=item.invoice_key,
-                installment_number=item.installment_number,
-                drawee=drawee,
-                face_value=item.face_value,
-                currency_code=item.currency_code,
-                term_days=item.term_days,
-                present_value=item.present_value,
-            ))
+            items.append(
+                BatchPreviewItem(
+                    receivable_id=item.receivable_id,
+                    invoice_key=item.invoice_key,
+                    installment_number=item.installment_number,
+                    drawee=drawee,
+                    face_value=item.face_value,
+                    currency_code=item.currency_code,
+                    term_days=item.term_days,
+                    present_value=item.present_value,
+                )
+            )
 
     return BatchDetailResponse(
         id=batch.id,

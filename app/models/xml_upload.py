@@ -11,9 +11,7 @@ from app.models.base import Base
 class XmlUpload(Base):
     __tablename__ = "xml_uploads"
 
-    __table_args__ = (
-        CheckConstraint("status IN ('processed', 'failed')", name="chk_xml_uploads_status"),
-    )
+    __table_args__ = (CheckConstraint("status IN ('processed', 'failed')", name="chk_xml_uploads_status"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

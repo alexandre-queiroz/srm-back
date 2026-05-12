@@ -38,21 +38,36 @@ class TestCreateBatch:
         db = MagicMock()
         with patch("app.services.batch_service.receivable_repository.get_by_id", return_value=None):
             with pytest.raises(BatchError, match="não encontrado"):
-                create_batch(db, user_id=uuid.uuid4(), assignor_id=uuid.uuid4(), receivable_ids=[uuid.uuid4()])
+                create_batch(
+                    db,
+                    user_id=uuid.uuid4(),
+                    assignor_id=uuid.uuid4(),
+                    receivable_ids=[uuid.uuid4()],
+                )
 
     def test_wrong_assignor_raises(self):
         assignor_id = uuid.uuid4()
         receivable = _make_receivable(assignor_id=uuid.uuid4())  # different assignor
         with patch("app.services.batch_service.receivable_repository.get_by_id", return_value=receivable):
             with pytest.raises(BatchError, match="não pertence ao cedente"):
-                create_batch(MagicMock(), user_id=uuid.uuid4(), assignor_id=assignor_id, receivable_ids=[receivable.id])
+                create_batch(
+                    MagicMock(),
+                    user_id=uuid.uuid4(),
+                    assignor_id=assignor_id,
+                    receivable_ids=[receivable.id],
+                )
 
     def test_unavailable_receivable_raises(self):
         assignor_id = uuid.uuid4()
         receivable = _make_receivable(assignor_id=assignor_id, status="in_batch")
         with patch("app.services.batch_service.receivable_repository.get_by_id", return_value=receivable):
             with pytest.raises(BatchError, match="não está disponível"):
-                create_batch(MagicMock(), user_id=uuid.uuid4(), assignor_id=assignor_id, receivable_ids=[receivable.id])
+                create_batch(
+                    MagicMock(),
+                    user_id=uuid.uuid4(),
+                    assignor_id=assignor_id,
+                    receivable_ids=[receivable.id],
+                )
 
     def test_creates_batch_and_updates_status(self):
         assignor_id = uuid.uuid4()
@@ -62,8 +77,10 @@ class TestCreateBatch:
         db = MagicMock()
         db.execute.return_value = None
 
-        with patch("app.services.batch_service.receivable_repository.get_by_id", side_effect=[r1, r2]), \
-             patch("app.services.batch_service.batch_repository.create") as mock_create:
+        with (
+            patch("app.services.batch_service.receivable_repository.get_by_id", side_effect=[r1, r2]),
+            patch("app.services.batch_service.batch_repository.create") as mock_create,
+        ):
             mock_create.side_effect = lambda db, batch: batch
 
             create_batch(db, user_id=uuid.uuid4(), assignor_id=assignor_id, receivable_ids=[r1.id, r2.id])
@@ -100,6 +117,7 @@ class TestPreviewBatch:
         batch = self._make_batch(receivables=[r1, r2])
 
         from app.services.pricing_service import PricingResult
+
         pricing_result = PricingResult(
             face_value=Decimal("10000.00"),
             present_value=Decimal("9500.00"),
@@ -110,8 +128,13 @@ class TestPreviewBatch:
             spread_daily=Decimal("0.000068"),
         )
 
-        with patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch), \
-             patch("app.services.batch_service.pricing_service.price_receivable", return_value=pricing_result):
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch(
+                "app.services.batch_service.pricing_service.price_receivable",
+                return_value=pricing_result,
+            ),
+        ):
             preview = preview_batch(MagicMock(), batch_id=batch.id)
 
         assert preview.total_receivables == 2

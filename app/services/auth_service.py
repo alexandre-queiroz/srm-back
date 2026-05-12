@@ -31,6 +31,7 @@ def decode_token_from_credentials(token: str) -> str:
 
 def get_user_from_token(db: Session, user_id: str) -> User:
     import uuid
+
     user = user_repository.get_by_id(db, uuid.UUID(user_id))
     if not user or not user.is_active:
         raise InvalidCredentialsError

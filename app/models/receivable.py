@@ -14,7 +14,10 @@ class Receivable(Base):
 
     __table_args__ = (
         UniqueConstraint("invoice_key", "installment_number", name="uq_receivables_installment"),
-        CheckConstraint("status IN ('available', 'in_batch', 'anticipated', 'invalid')", name="chk_receivables_status"),
+        CheckConstraint(
+            "status IN ('available', 'in_batch', 'anticipated', 'invalid')",
+            name="chk_receivables_status",
+        ),
         CheckConstraint("face_value > 0", name="chk_receivables_face_value_positive"),
         CheckConstraint("assignor_id <> drawee_id", name="chk_receivables_assignor_drawee_different"),
     )

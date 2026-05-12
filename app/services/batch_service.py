@@ -69,9 +69,7 @@ def create_batch(
     batch_repository.create(db, batch)
 
     for r in receivables:
-        db.execute(
-            batch_items.insert().values(batch_id=batch.id, receivable_id=r.id)
-        )
+        db.execute(batch_items.insert().values(batch_id=batch.id, receivable_id=r.id))
         r.status = "in_batch"
 
     db.commit()
@@ -102,18 +100,20 @@ def preview_batch(
             product_type_id=r.product_type_id,
             reference_date=reference_date,
         )
-        items.append(PreviewItem(
-            receivable_id=r.id,
-            invoice_key=r.invoice_key,
-            installment_number=r.installment_number,
-            drawee_id=r.drawee_id,
-            face_value=r.face_value,
-            currency_code=r.currency_code,
-            term_days=result.term_days,
-            present_value=result.present_value,
-            base_rate_annual=result.base_rate_annual,
-            spread_annual=result.spread_annual,
-        ))
+        items.append(
+            PreviewItem(
+                receivable_id=r.id,
+                invoice_key=r.invoice_key,
+                installment_number=r.installment_number,
+                drawee_id=r.drawee_id,
+                face_value=r.face_value,
+                currency_code=r.currency_code,
+                term_days=result.term_days,
+                present_value=result.present_value,
+                base_rate_annual=result.base_rate_annual,
+                spread_annual=result.spread_annual,
+            )
+        )
         total_face += r.face_value
         total_pv += result.present_value
 

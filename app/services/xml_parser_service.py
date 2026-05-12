@@ -1,10 +1,8 @@
-import uuid
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 import defusedxml.ElementTree as ET
-
 
 NS = "http://www.portalfiscal.inf.br/nfe"
 

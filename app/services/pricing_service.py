@@ -23,10 +23,14 @@ def _get_base_rate(db: Session) -> tuple[Decimal, Decimal]:
 
 
 def _get_spread(db: Session, product_type_id) -> Decimal:
-    pt = db.query(ProductType).filter(
-        ProductType.id == product_type_id,
-        ProductType.is_active == True,  # noqa: E712
-    ).first()
+    pt = (
+        db.query(ProductType)
+        .filter(
+            ProductType.id == product_type_id,
+            ProductType.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
     if pt is None:
         raise PricingError(f"ProductType {product_type_id} não encontrado ou inativo.")
     # Convert annual spread to daily

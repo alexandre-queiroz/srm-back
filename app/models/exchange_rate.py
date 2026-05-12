@@ -12,9 +12,7 @@ from app.models.base import Base
 class ExchangeRate(Base):
     __tablename__ = "exchange_rates"
 
-    __table_args__ = (
-        CheckConstraint("from_currency <> to_currency", name="chk_exchange_rates_different_currencies"),
-    )
+    __table_args__ = (CheckConstraint("from_currency <> to_currency", name="chk_exchange_rates_different_currencies"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     from_currency: Mapped[str] = mapped_column(String(3), nullable=False)
