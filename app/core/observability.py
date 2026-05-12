@@ -6,8 +6,11 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from app.core.config import settings
 
+_tracer: trace.Tracer | None = None
+
 
 def setup_observability() -> None:
+    global _tracer
     resource = Resource.create({"service.name": settings.OTEL_SERVICE_NAME})
 
     exporter = OTLPSpanExporter(
@@ -21,3 +24,8 @@ def setup_observability() -> None:
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
+    _tracer = trace.get_tracer(settings.OTEL_SERVICE_NAME)
+
+
+def get_tracer() -> trace.Tracer:
+    return trace.get_tracer(settings.OTEL_SERVICE_NAME)

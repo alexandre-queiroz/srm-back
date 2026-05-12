@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     AXIOM_TOKEN: str
     AXIOM_DATASET: str
 
+    R2_ENDPOINT_URL: str
+    R2_ACCESS_KEY_ID: str
+    R2_SECRET_ACCESS_KEY: str
+    R2_BUCKET_NAME: str
+
     model_config = {"env_file": ".env"}
 
 

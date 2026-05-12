@@ -65,6 +65,7 @@ erDiagram
 
     receivables {
         uuid            id                  PK
+        uuid            xml_upload_id       FK "nullable"
         uuid            assignor_id         FK "companies"
         uuid            drawee_id           FK "companies"
         uuid            product_type_id     FK
@@ -81,7 +82,19 @@ erDiagram
         varchar(3)      currency_code       FK
         date            due_date
         text            xml_storage_url
+        text            error_message
         varchar(20)     status
+        timestamptz     created_at
+    }
+
+    xml_uploads {
+        uuid            id                  PK
+        uuid            user_id             FK
+        varchar(255)    filename
+        varchar(20)     status
+        text            error_message
+        text            xml_storage_url
+        integer         receivables_created
         timestamptz     created_at
     }
 
@@ -122,6 +135,8 @@ erDiagram
     product_types     ||--o{ receivables     : "types"
     receivables       ||--|| transactions    : "liquidated as"
     exchange_rates    ||--o{ transactions    : "rate used"
+    users             ||--o{ xml_uploads    : "uploads"
+    xml_uploads       ||--o{ receivables   : "originates"
 ```
 
 ## Decisões de Modelagem
@@ -144,7 +159,13 @@ erDiagram
 
 **`receivables.status`** ciclo de vida: `available` (elegível) → `in_batch` (bloqueado em solicitação pendente) → `anticipated` (liquidado). Rejeição de lote devolve para `available`.
 
-**`receivables.xml_storage_url`** nullable — campo reservado para link ao XML original em storage (S3 ou similar) para auditoria futura.
+**`receivables.xml_storage_url`** nullable — link ao XML original no R2 para auditoria. Preenchido apenas quando o upload é bem-sucedido.
+
+**`xml_uploads`** lote de upload — um registro por ação do operador. `status = failed` indica que o XML era completamente ilegível (parse impossível). `receivables_created` permite auditoria rápida sem join.
+
+**`receivables.xml_upload_id`** nullable — vincula o recebível ao lote de upload de origem. Ausente em recebíveis criados por outros canais futuros.
+
+**`receivables.status = invalid`** recebível parseável mas com violação de regra de negócio (valor zero, CNPJ inválido, duplicata já existente). O campo `error_message` descreve o motivo. Recebíveis inválidos são visíveis ao operador mas nunca elegíveis para lotes de antecipação.
 
 **`batch_items`** join table entre lotes e recebíveis. Desacopla a existência do recebível da solicitação de antecipação — suporta futuros canais de entrada sem XML.
 

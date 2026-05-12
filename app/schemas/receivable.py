@@ -40,6 +40,7 @@ class ReceivableUploadItem(AppSchema):
 
 
 class ReceivableUploadResponse(AppSchema):
+    upload_id: uuid.UUID
     total: int
     imported: int
     skipped: int
