@@ -1,0 +1,19 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    DATABASE_URL: str
+    SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+
+    EXCHANGE_RATE_PRIMARY_URL: str
+    EXCHANGE_RATE_SECONDARY_URL: str
+
+    OTEL_SERVICE_NAME: str = "srm-credit-engine"
+    AXIOM_TOKEN: str
+    AXIOM_DATASET: str
+
+    model_config = {"env_file": ".env"}
+
+
+settings = Settings()
