@@ -1,59 +1,52 @@
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
-from enum import StrEnum
+
+from pydantic import Field
 
 from app.schemas.base import AppSchema
 
 
-class GroupBy(StrEnum):
-    assignor = "assignor"
-    drawee = "drawee"
-    none = "none"
-
-
-class LiquidationFilters(AppSchema):
-    date_from: date
-    date_to: date
-    assignor_id: uuid.UUID | None = None
-    currency_code: str | None = None
-    group_by: GroupBy = GroupBy.none
-    page: int = 1
-    page_size: int = 50
-
-
-class LiquidationItem(AppSchema):
+class SettlementReportItem(AppSchema):
     transaction_id: uuid.UUID
     batch_id: uuid.UUID
+    liquidated_at: datetime
+
     assignor_name: str
+    assignor_cnpj: str
     drawee_name: str
+    drawee_cnpj: str
+
     invoice_key: str
     installment_number: str
-    product_type_name: str
+
+    instrument_currency: str
     face_value: Decimal
     present_value: Decimal
+    settlement_currency: str
+    exchange_rate_used: Decimal | None
+
     term_days: int
     spread_used: Decimal
     base_rate_used: Decimal
-    instrument_currency: str
-    settlement_currency: str
-    exchange_rate_used: Decimal | None
-    liquidated_at: datetime
 
 
-class LiquidationGroup(AppSchema):
-    group_label: str
-    total_face_value: Decimal
-    total_present_value: Decimal
-    total_transactions: int
-    items: list[LiquidationItem]
+class SettlementReportParams(AppSchema):
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    assignor_id: uuid.UUID | None = None
+    currency_code: str | None = Field(None, min_length=3, max_length=3)
 
 
-class LiquidationReportResponse(AppSchema):
-    date_from: date
-    date_to: date
-    group_by: GroupBy
-    total_face_value: Decimal
-    total_present_value: Decimal
-    total_transactions: int
-    groups: list[LiquidationGroup]
+class SettlementSummary(AppSchema):
+    total_count: int
+    total_face_value_brl: Decimal
+    total_present_value_brl: Decimal
+    average_spread: Decimal
+
+
+class SettlementReportResponse(AppSchema):
+    items: list[SettlementReportItem]
+    summary: SettlementSummary
+    page: int
+    page_size: int
