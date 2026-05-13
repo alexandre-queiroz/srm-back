@@ -20,3 +20,17 @@ class Page(AppSchema, Generic[T]):  # noqa: UP046
     page: int
     page_size: int
     pages: int
+
+
+class CursorPage(AppSchema, Generic[T]):  # noqa: UP046
+    """
+    Keyset-based pagination response.
+
+    Use ``next_cursor`` as the ``after`` query parameter in the next request.
+    When ``next_cursor`` is None the caller has reached the last page.
+    Unlike OFFSET pagination, this stays O(K) regardless of how deep into the
+    table you paginate.
+    """
+
+    items: list[T]
+    next_cursor: str | None  # opaque base64-encoded composite key

@@ -190,9 +190,10 @@ def confirm_batch(
     if update_result.rowcount == 0:
         raise ConcurrencyError("Lote foi modificado por outro processo. Recarregue e tente novamente.")
 
-    # Lock acquired — apply all writes
+    # Lock acquired — build all Transaction objects then bulk-add in one flush
+    transactions = []
     for r, result, pv_settlement, ex_rate_id, ex_rate_used in priced:
-        db.add(
+        transactions.append(
             Transaction(
                 batch_id=batch.id,
                 receivable_id=r.id,
@@ -209,6 +210,7 @@ def confirm_batch(
             )
         )
         r.status = "anticipated"
+    db.add_all(transactions)
 
     db.commit()
     db.refresh(batch)

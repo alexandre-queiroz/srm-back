@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
 from app.repositories import batch_repository
+from app.schemas.base import CursorPage
 from app.schemas.batch import (
     BatchConfirm,
     BatchCreate,
@@ -156,6 +157,28 @@ def list_batches(
         page_size=page_size,
     )
     return [_batch_response(b) for b in batches]
+
+
+@router.get(
+    "/cursor",
+    response_model=CursorPage[BatchResponse],
+    summary="Listar lotes com keyset pagination",
+    description="Use `after` (next_cursor da página anterior). Keyset pagination: O(K) em qualquer profundidade.",
+)
+def list_batches_cursor(
+    current_user: CurrentUser,
+    db: DbDep,
+    assignor_id: uuid.UUID | None = None,
+    after: str | None = None,
+    page_size: int = 20,
+) -> CursorPage[BatchResponse]:
+    batches, next_cursor = batch_repository.list_by_assignor_cursor(
+        db=db,
+        assignor_id=assignor_id,
+        after=after,
+        page_size=page_size,
+    )
+    return CursorPage(items=[_batch_response(b) for b in batches], next_cursor=next_cursor)
 
 
 @router.get(

@@ -210,8 +210,8 @@ class TestConfirmBatch:
         assert r.status == "anticipated"
         db.commit.assert_called_once()
 
-        # Verify Transaction was added without FX fields
-        added_txn = db.add.call_args[0][0]
+        # Verify Transaction was bulk-added without FX fields
+        added_txn = db.add_all.call_args[0][0][0]
         assert added_txn.exchange_rate_id is None
         assert added_txn.exchange_rate_used is None
         assert added_txn.present_value == Decimal("9500.00")
@@ -238,7 +238,7 @@ class TestConfirmBatch:
         ):
             confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
 
-        added_txn = db.add.call_args[0][0]
+        added_txn = db.add_all.call_args[0][0][0]
         # 9500.00 USD * 5.20 = 49400.00 BRL
         assert added_txn.present_value == Decimal("49400.00")
         assert added_txn.exchange_rate_id == fx_record.id
