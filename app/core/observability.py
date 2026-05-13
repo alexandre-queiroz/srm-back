@@ -22,7 +22,7 @@ _tracer: trace.Tracer | None = None
 
 def setup_observability(app: FastAPI | None = None) -> None:
     global _tracer
-    resource = Resource.create({"service.name": settings.OTEL_SERVICE_NAME})
+    resource = Resource.create({"service.name": settings.OTEL_SERVICE_NAME.strip()})
 
     exporter = OTLPSpanExporter(
         endpoint="https://api.axiom.co/v1/traces",
