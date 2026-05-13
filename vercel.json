@@ -10,5 +10,11 @@
       "src": "/(.*)",
       "dest": "app/main.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/internal/collect-rates",
+      "schedule": "0 9-18 * * 1-5"
+    }
   ]
 }
