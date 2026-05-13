@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
-from app.schemas.base import CursorPage
+from app.schemas.base import CursorPage, Page
 from app.schemas.company import CompanyResponse
 from app.schemas.receivable import ReceivableResponse, ReceivableUploadResponse
 from app.services import receivable_service
@@ -96,7 +96,7 @@ async def upload_nfe(
 
 @router.get(
     "",
-    response_model=list[ReceivableResponse],
+    response_model=Page[ReceivableResponse],
     summary="Listar recebíveis disponíveis",
 )
 def list_receivables(
@@ -109,8 +109,8 @@ def list_receivables(
     invoice_key_op: str | None = None,
     page: int = 1,
     page_size: int = 20,
-) -> list[ReceivableResponse]:
-    receivables, _ = receivable_service.receivable_repository.list_available(
+) -> Page[ReceivableResponse]:
+    receivables, total = receivable_service.receivable_repository.list_available(
         db=db,
         assignor_id=assignor_id,
         drawee_id=drawee_id,
@@ -120,8 +120,15 @@ def list_receivables(
         page=page,
         page_size=page_size,
     )
-    # joinedload(assignor/drawee/product_type) already applied in list_available — zero N+1
-    return [_receivable_response(r) for r in receivables]
+    import math
+
+    return Page(
+        items=[_receivable_response(r) for r in receivables],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=math.ceil(total / page_size) if page_size else 1,
+    )
 
 
 @router.get(
