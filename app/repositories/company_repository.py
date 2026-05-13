@@ -1,8 +1,11 @@
 import uuid
 
+from sqlalchemy import func
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.models.receivable import Receivable
 from app.repositories._filters import str_filter
 
 
@@ -21,8 +24,14 @@ def list_companies(
     cnpj: str | None = None,
     cnpj_op: str | None = None,
     limit: int = 100,
-) -> list[Company]:
-    q = db.query(Company)
+) -> list[tuple[Company, int]]:
+    available_count = (
+        sa_select(func.count(Receivable.id))
+        .where(Receivable.assignor_id == Company.id, Receivable.status == "available")
+        .correlate(Company)
+        .scalar_subquery()
+    )
+    q = db.query(Company, available_count.label("available_receivables_count"))
     if social_reason:
         q = q.filter(str_filter(Company.social_reason, social_reason, social_reason_op))
     if cnpj:

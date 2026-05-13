@@ -26,12 +26,15 @@ def list_companies(
     cnpj_op: str | None = Query(
         None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
     ),
-    limit: int = Query(100, le=100),
+    limit: int = Query(100, le=500),
 ) -> list[CompanyResponse]:
-    companies = company_repository.list_companies(
+    rows = company_repository.list_companies(
         db, social_reason=social_reason, social_reason_op=social_reason_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
     )
-    return [CompanyResponse.model_validate(c) for c in companies]
+    return [
+        CompanyResponse(**CompanyResponse.model_validate(c).model_dump(), available_receivables_count=count)
+        for c, count in rows
+    ]
 
 
 @router.get("/{company_id}", response_model=CompanyResponse, summary="Detalhes da empresa")

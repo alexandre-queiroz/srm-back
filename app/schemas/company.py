@@ -26,3 +26,4 @@ class CompanyResponse(AppSchema):
     social_reason: str
     fantasy_name: str | None
     created_at: datetime
+    available_receivables_count: int = 0
