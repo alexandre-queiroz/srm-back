@@ -97,6 +97,8 @@ def preview_batch(
             currency_code=item.currency_code,
             term_days=item.term_days,
             present_value=item.present_value,
+            base_rate_annual=item.base_rate_annual,
+            spread_annual=item.spread_annual,
         )
         for item in preview.items
     ]

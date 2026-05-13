@@ -24,6 +24,8 @@ class BatchPreviewItem(AppSchema):
     currency_code: str
     term_days: int
     present_value: FinancialDecimal
+    base_rate_annual: FinancialDecimal
+    spread_annual: FinancialDecimal
 
 
 class BatchPreviewResponse(AppSchema):
