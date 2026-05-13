@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     R2_SECRET_ACCESS_KEY: str
     R2_BUCKET_NAME: str
 
-    WORKER_POLL_INTERVAL: int = 10
+    WORKER_POLL_INTERVAL: int = 60
 
     model_config = {"env_file": ".env"}
 
