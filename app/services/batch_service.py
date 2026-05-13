@@ -215,3 +215,23 @@ def confirm_batch(
     db.commit()
     db.refresh(batch)
     return batch
+
+
+def queue_batch(db: Session, batch_id: uuid.UUID, expected_version: int) -> Batch:
+    batch = batch_repository.get_by_id(db, batch_id)
+    if batch is None:
+        raise BatchError(f"Lote {batch_id} não encontrado.")
+    if batch.status != "pending":
+        raise BatchError(f"Lote em status '{batch.status}' não pode ser enfileirado.")
+
+    update_result = db.execute(
+        sa_update(Batch)
+        .where(Batch.id == batch_id, Batch.version == expected_version)
+        .values(status="queued", version=expected_version + 1, updated_at=datetime.now(UTC))
+    )
+    if update_result.rowcount == 0:
+        raise ConcurrencyError("Lote foi modificado por outro processo. Recarregue e tente novamente.")
+
+    db.commit()
+    db.refresh(batch)
+    return batch

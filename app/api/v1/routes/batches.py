@@ -18,7 +18,7 @@ from app.schemas.batch import (
 )
 from app.schemas.company import CompanyResponse
 from app.services import batch_service
-from app.services.batch_service import BatchError, ConcurrencyError
+from app.services.batch_service import BatchError, ConcurrencyError, queue_batch
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
@@ -128,6 +128,28 @@ def confirm_batch(
             user_id=current_user.id,
             expected_version=payload.expected_version,
         )
+    except ConcurrencyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except BatchError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    batch = batch_repository.get_by_id(db, batch.id)
+    return _batch_response(batch)
+
+
+@router.post(
+    "/{batch_id}/queue",
+    response_model=BatchResponse,
+    summary="Enfileirar lote para processamento assíncrono pelo worker",
+)
+def queue_batch_endpoint(
+    batch_id: uuid.UUID,
+    payload: BatchConfirm,
+    current_user: CurrentUser,
+    db: DbDep,
+) -> BatchResponse:
+    try:
+        batch = queue_batch(db=db, batch_id=batch_id, expected_version=payload.expected_version)
     except ConcurrencyError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except BatchError as exc:
