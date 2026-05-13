@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/v1/internal/collect-rates",
-      "schedule": "0 9-18 * * 1-5"
+      "schedule": "0 16 * * 1-5"
     }
   ]
 }
