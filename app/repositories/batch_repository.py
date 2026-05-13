@@ -25,12 +25,15 @@ def get_by_id(db: Session, batch_id: uuid.UUID) -> Batch | None:
 def list_by_assignor(
     db: Session,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[Batch], int]:
     q = db.query(Batch)
     if assignor_id:
         q = q.filter(Batch.assignor_id == assignor_id)
+    if status:
+        q = q.filter(Batch.status == status)
     total = q.count()
     items = q.options(*_eager()).order_by(Batch.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return items, total
@@ -39,19 +42,18 @@ def list_by_assignor(
 def list_by_assignor_cursor(
     db: Session,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     after: str | None = None,
     page_size: int = 20,
 ) -> tuple[list[Batch], str | None]:
     """
     Keyset pagination sorted by (created_at DESC, id DESC).
-
-    Returns (items, next_cursor). Pass next_cursor as ``after`` to fetch the
-    next page. When next_cursor is None you have reached the last page.
-    O(K) at any depth — no OFFSET scan.
     """
     q = db.query(Batch)
     if assignor_id:
         q = q.filter(Batch.assignor_id == assignor_id)
+    if status:
+        q = q.filter(Batch.status == status)
 
     if after:
         raw = decode_cursor(after)

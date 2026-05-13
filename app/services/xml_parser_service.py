@@ -25,9 +25,10 @@ class ParsedInstallment:
     freight_value: Decimal
     other_value: Decimal
     assignor_cnpj: str
-    assignor_name: str
+    assignor_social_reason: str
+    assignor_fantasy_name: str | None
     drawee_cnpj: str
-    drawee_name: str
+    drawee_social_reason: str
 
 
 def _tag(name: str) -> str:
@@ -93,9 +94,10 @@ def parse(xml_bytes: bytes) -> list[ParsedInstallment]:
         raise XMLParseError("Elementos emit/dest não encontrados")
 
     assignor_cnpj = _text(emit, "CNPJ")
-    assignor_name = _text(emit, "xNome")
+    assignor_social_reason = _text(emit, "xNome")
+    assignor_fantasy_name = _text(emit, "xFant", required=False) or None
     drawee_cnpj = _text(dest, "CNPJ")
-    drawee_name = _text(dest, "xNome")
+    drawee_social_reason = _text(dest, "xNome")
 
     if assignor_cnpj == drawee_cnpj:
         raise XMLParseError("Cedente e sacado não podem ser o mesmo CNPJ")
@@ -140,9 +142,10 @@ def parse(xml_bytes: bytes) -> list[ParsedInstallment]:
                 freight_value=freight_value if len(dups) == 1 else Decimal("0"),
                 other_value=other_value if len(dups) == 1 else Decimal("0"),
                 assignor_cnpj=assignor_cnpj,
-                assignor_name=assignor_name,
+                assignor_social_reason=assignor_social_reason,
+                assignor_fantasy_name=assignor_fantasy_name,
                 drawee_cnpj=drawee_cnpj,
-                drawee_name=drawee_name,
+                drawee_social_reason=drawee_social_reason,
             )
         )
 

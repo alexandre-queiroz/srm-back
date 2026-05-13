@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
+from app.models.exchange_rate import ExchangeRate
 from app.schemas.base import FinancialDecimal
 from app.schemas.exchange_rate import ExchangeRateResponse
 from app.services.exchange_rate_service import (
@@ -65,3 +66,17 @@ def latest_rate(current_user: CurrentUser, db: DbDep) -> ExchangeRateResponse:
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nenhuma taxa encontrada.")
     return ExchangeRateResponse.model_validate(record)
+
+
+@router.get(
+    "",
+    response_model=list[ExchangeRateResponse],
+    summary="Listar histórico recente de taxas",
+)
+def list_rates(
+    current_user: CurrentUser,
+    db: DbDep,
+    limit: int = 50,
+) -> list[ExchangeRateResponse]:
+    records = db.query(ExchangeRate).order_by(ExchangeRate.collected_at.desc()).limit(limit).all()
+    return [ExchangeRateResponse.model_validate(r) for r in records]

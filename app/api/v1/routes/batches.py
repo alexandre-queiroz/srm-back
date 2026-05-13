@@ -64,6 +64,57 @@ def create_batch(
     return _batch_response(batch)
 
 
+@router.post(
+    "/simulate",
+    response_model=BatchPreviewResponse,
+    summary="Simulação de precificação (sem persistência)",
+)
+def simulate_batch(
+    payload: BatchCreate,
+    current_user: CurrentUser,
+    db: DbDep,
+) -> BatchPreviewResponse:
+    try:
+        preview = batch_service.simulate_batch(
+            db=db,
+            assignor_id=payload.assignor_id,
+            receivable_ids=payload.receivable_ids,
+        )
+    except BatchError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    from app.models.company import Company
+
+    assignor = db.query(Company).filter(Company.id == payload.assignor_id).first()
+    drawee_ids = list({item.drawee_id for item in preview.items})
+    drawees = {c.id: c for c in db.query(Company).filter(Company.id.in_(drawee_ids)).all()}
+
+    items = [
+        BatchPreviewItem(
+            receivable_id=item.receivable_id,
+            invoice_key=item.invoice_key,
+            installment_number=item.installment_number,
+            drawee=CompanyResponse.model_validate(drawees[item.drawee_id]),
+            face_value=item.face_value,
+            currency_code=item.currency_code,
+            term_days=item.term_days,
+            present_value=item.present_value,
+            base_rate_annual=item.base_rate_annual,
+            spread_annual=item.spread_annual,
+        )
+        for item in preview.items
+    ]
+
+    return BatchPreviewResponse(
+        batch_id=preview.batch_id,
+        assignor=CompanyResponse.model_validate(assignor),
+        total_receivables=preview.total_receivables,
+        total_face_value=preview.total_face_value,
+        total_present_value=preview.total_present_value,
+        items=items,
+    )
+
+
 @router.get(
     "/{batch_id}/preview",
     response_model=BatchPreviewResponse,
@@ -171,6 +222,7 @@ def list_batches(
     current_user: CurrentUser,
     db: DbDep,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[BatchResponse]:
@@ -178,6 +230,7 @@ def list_batches(
     batches, _ = batch_repository.list_by_assignor(
         db=db,
         assignor_id=assignor_id,
+        status=status,
         page=page,
         page_size=page_size,
     )
@@ -194,12 +247,14 @@ def list_batches_cursor(
     current_user: CurrentUser,
     db: DbDep,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     after: str | None = None,
     page_size: int = 20,
 ) -> CursorPage[BatchResponse]:
     batches, next_cursor = batch_repository.list_by_assignor_cursor(
         db=db,
         assignor_id=assignor_id,
+        status=status,
         after=after,
         page_size=page_size,
     )
@@ -241,6 +296,8 @@ def get_batch(
                 currency_code=r.currency_code,
                 term_days=txn_by_receivable[r.id].term_days if r.id in txn_by_receivable else 0,
                 present_value=txn_by_receivable[r.id].present_value if r.id in txn_by_receivable else r.face_value,
+                base_rate_annual=txn_by_receivable[r.id].base_rate_used if r.id in txn_by_receivable else 0,
+                spread_annual=txn_by_receivable[r.id].spread_used if r.id in txn_by_receivable else 0,
             )
             for r in batch.receivables
         ]
@@ -263,6 +320,8 @@ def get_batch(
                 currency_code=item.currency_code,
                 term_days=item.term_days,
                 present_value=item.present_value,
+                base_rate_annual=item.base_rate_annual,
+                spread_annual=item.spread_annual,
             )
             for item in preview.items
         ]
@@ -271,6 +330,7 @@ def get_batch(
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
         status=batch.status,
+        version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(items),
         created_at=batch.created_at,

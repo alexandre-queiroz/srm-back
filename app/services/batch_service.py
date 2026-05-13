@@ -136,6 +136,63 @@ def preview_batch(
     )
 
 
+def simulate_batch(
+    db: Session,
+    assignor_id: uuid.UUID,
+    receivable_ids: list[uuid.UUID],
+    reference_date=None,
+) -> BatchPreview:
+    if not receivable_ids:
+        raise BatchError("Simulação deve conter ao menos um recebível.")
+
+    items: list[PreviewItem] = []
+    total_face = Decimal("0")
+    total_pv = Decimal("0")
+
+    batch_strategy = create_batch_strategy(db)
+
+    for rid in receivable_ids:
+        r = receivable_repository.get_by_id(db, rid)
+        if r is None:
+            raise BatchError(f"Recebível {rid} não encontrado.")
+        if r.assignor_id != assignor_id:
+            raise BatchError(f"Recebível {rid} não pertence ao cedente {assignor_id}.")
+
+        result = pricing_service.price_receivable(
+            db=db,
+            face_value=r.face_value,
+            due_date=r.due_date,
+            product_type_id=r.product_type_id,
+            reference_date=reference_date,
+            strategy=batch_strategy,
+        )
+        items.append(
+            PreviewItem(
+                receivable_id=r.id,
+                invoice_key=r.invoice_key,
+                installment_number=r.installment_number,
+                drawee_id=r.drawee_id,
+                face_value=r.face_value,
+                currency_code=r.currency_code,
+                term_days=result.term_days,
+                present_value=result.present_value,
+                base_rate_annual=result.base_rate_annual,
+                spread_annual=result.spread_annual,
+            )
+        )
+        total_face += r.face_value
+        total_pv += result.present_value
+
+    return BatchPreview(
+        batch_id=uuid.UUID(int=0),
+        assignor_id=assignor_id,
+        total_receivables=len(items),
+        total_face_value=total_face,
+        total_present_value=total_pv,
+        items=items,
+    )
+
+
 def confirm_batch(
     db: Session,
     batch_id: uuid.UUID,

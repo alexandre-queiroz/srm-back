@@ -18,18 +18,18 @@ DbDep = Annotated[Session, Depends(get_db)]
 def list_companies(
     current_user: CurrentUser,
     db: DbDep,
-    name: str | None = Query(None),
-    name_op: str | None = Query(
-        None, description="Operador para nome: startswith, endswith, equal, different, contains (padrão)"
+    social_reason: str | None = Query(None),
+    social_reason_op: str | None = Query(
+        None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
     ),
     cnpj: str | None = Query(None),
     cnpj_op: str | None = Query(
-        None, description="Operador para CNPJ: startswith, endswith, equal, different, contains (padrão)"
+        None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
     ),
     limit: int = Query(100, le=100),
 ) -> list[CompanyResponse]:
     companies = company_repository.list_companies(
-        db, name=name, name_op=name_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
+        db, social_reason=social_reason, social_reason_op=social_reason_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
     )
     return [CompanyResponse.model_validate(c) for c in companies]
 
