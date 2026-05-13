@@ -39,6 +39,7 @@ class BatchResponse(AppSchema):
     id: uuid.UUID
     assignor: CompanyResponse
     status: str
+    version: int
     rejection_reasons: dict[str, Any] | None
     total_receivables: int
     created_at: datetime
