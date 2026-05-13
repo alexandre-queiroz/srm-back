@@ -3,26 +3,35 @@ Batch liquidation worker.
 
 Processes batches in 'queued' status asynchronously, decoupling the
 heavy confirm_batch logic from the request/response cycle.
-
-Invocation options:
-  - As a one-shot script:   python -m app.workers.lote_processor
-  - From a FastAPI background task: BackgroundTasks.add_task(process_queued_batches, db)
-  - Via cron / Celery / APScheduler: call process_queued_batches with a DB session
 """
 
 import logging
-from datetime import UTC, datetime
+import signal
+import sys
+import time
+import uuid
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.observability import setup_observability
 from app.models.batch import Batch
 from app.services.batch_service import BatchError, ConcurrencyError, confirm_batch
 
 logger = logging.getLogger(__name__)
 
 # Sentinel user ID for system-initiated liquidations
-_SYSTEM_USER_ID_STR = "00000000-0000-0000-0000-000000000000"
+_SYSTEM_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+# Graceful shutdown flag
+should_exit = False
+
+
+def handle_signal(signum, frame):
+    global should_exit
+    logger.info("Signal %d received, shutting down gracefully...", signum)
+    should_exit = True
 
 
 def _get_queued_batches(db: Session) -> list[Batch]:
@@ -32,17 +41,10 @@ def _get_queued_batches(db: Session) -> list[Batch]:
 def process_queued_batches(db: Session) -> dict:
     """
     Find all queued batches and attempt to confirm each one.
-
-    Returns a summary dict with counts of successes and failures.
-    The caller is responsible for providing and closing the DB session.
     """
-    import uuid
-
-    system_user = uuid.UUID(_SYSTEM_USER_ID_STR)
     batches = _get_queued_batches(db)
 
     if not batches:
-        logger.info("lote_processor: no queued batches found")
         return {"processed": 0, "failed": 0, "skipped": 0}
 
     processed = 0
@@ -50,45 +52,68 @@ def process_queued_batches(db: Session) -> dict:
     skipped = 0
 
     for batch in batches:
+        if should_exit:
+            break
+
         batch_id = batch.id
         version = batch.version
-        logger.info("lote_processor: processing batch %s (version=%d)", batch_id, version)
+        logger.info("Processing batch %s (version=%d)", batch_id, version)
 
         try:
             confirm_batch(
                 db=db,
                 batch_id=batch_id,
-                user_id=system_user,
+                user_id=_SYSTEM_USER_ID,
                 expected_version=version,
             )
             processed += 1
-            logger.info("lote_processor: batch %s confirmed successfully", batch_id)
-
+            logger.info("Batch %s confirmed successfully", batch_id)
         except ConcurrencyError:
-            # Another process confirmed this batch between our query and the lock
             skipped += 1
-            logger.warning("lote_processor: batch %s skipped — version conflict", batch_id)
+            logger.warning("Batch %s skipped — version conflict", batch_id)
             db.rollback()
-
         except (BatchError, Exception) as exc:
             failed += 1
-            logger.error("lote_processor: batch %s failed — %s", batch_id, exc)
+            logger.error("Batch %s failed — %s", batch_id, exc)
             db.rollback()
 
-    summary = {"processed": processed, "failed": failed, "skipped": skipped}
-    logger.info("lote_processor: run complete %s at %s", summary, datetime.now(UTC).isoformat())
-    return summary
+    return {"processed": processed, "failed": failed, "skipped": skipped}
 
 
 def run() -> None:
-    """Entry point for script/cron invocation."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    db: Session = SessionLocal()
-    try:
-        summary = process_queued_batches(db)
-        print(summary)  # noqa: T201
-    finally:
-        db.close()
+    """Persistent worker loop."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        stream=sys.stdout,
+    )
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+
+    setup_observability()
+
+    poll_interval = settings.WORKER_POLL_INTERVAL
+    logger.info("Worker started. Poll interval: %ds", poll_interval)
+
+    while not should_exit:
+        db: Session = SessionLocal()
+        try:
+            summary = process_queued_batches(db)
+            if summary["processed"] > 0 or summary["failed"] > 0:
+                logger.info("Run summary: %s", summary)
+        except Exception as e:
+            logger.error("Unexpected error in worker loop: %s", e)
+        finally:
+            db.close()
+
+        # Sleep in small increments to remain responsive to signals
+        for _ in range(poll_interval):
+            if should_exit:
+                break
+            time.sleep(1)
+
+    logger.info("Worker stopped.")
 
 
 if __name__ == "__main__":
