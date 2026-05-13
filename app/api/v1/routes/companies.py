@@ -19,12 +19,13 @@ def list_companies(
     current_user: CurrentUser,
     db: DbDep,
     q: str | None = Query(None, description="Busca por nome ou CNPJ"),
+    q_op: str | None = Query(None, description="Operador: startswith, endswith, equal, different, contains (padrão)"),
     limit: int = Query(100, le=100),
 ) -> list[CompanyResponse]:
     """
     Lista empresas cadastradas no sistema. Útil para popular filtros e selects no frontend.
     """
-    companies = company_repository.list_companies(db, query=q, limit=limit)
+    companies = company_repository.list_companies(db, query=q, query_op=q_op, limit=limit)
     return [CompanyResponse.model_validate(c) for c in companies]
 
 

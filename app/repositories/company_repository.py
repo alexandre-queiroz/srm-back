@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.repositories._filters import multi_col_str_filter
 
 
 def get_by_cnpj(db: Session, cnpj: str) -> Company | None:
@@ -13,11 +14,15 @@ def get_by_id(db: Session, company_id: uuid.UUID) -> Company | None:
     return db.query(Company).filter(Company.id == company_id).first()
 
 
-def list_companies(db: Session, query: str | None = None, limit: int = 100) -> list[Company]:
+def list_companies(
+    db: Session,
+    query: str | None = None,
+    query_op: str | None = None,
+    limit: int = 100,
+) -> list[Company]:
     q = db.query(Company)
     if query:
-        pattern = f"%{query}%"
-        q = q.filter(Company.name.ilike(pattern) | Company.cnpj.ilike(pattern))
+        q = q.filter(multi_col_str_filter([Company.name, Company.cnpj], query, query_op))
     return q.order_by(Company.name).limit(limit).all()
 
 

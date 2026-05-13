@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
-from app.repositories.receivable_repository import list_available, list_available_cursor
 from app.schemas.base import CursorPage
 from app.schemas.company import CompanyResponse
 from app.schemas.receivable import ReceivableResponse, ReceivableUploadResponse
@@ -104,10 +103,23 @@ def list_receivables(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     assignor_id: uuid.UUID | None = None,
+    drawee_id: uuid.UUID | None = None,
+    status: str | None = None,
+    invoice_key: str | None = None,
+    invoice_key_op: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[ReceivableResponse]:
-    receivables, _ = list_available(db=db, assignor_id=assignor_id, page=page, page_size=page_size)
+    receivables, _ = receivable_service.receivable_repository.list_available(
+        db=db,
+        assignor_id=assignor_id,
+        drawee_id=drawee_id,
+        status=status,
+        invoice_key=invoice_key,
+        invoice_key_op=invoice_key_op,
+        page=page,
+        page_size=page_size,
+    )
     # joinedload(assignor/drawee/product_type) already applied in list_available — zero N+1
     return [_receivable_response(r) for r in receivables]
 
@@ -122,8 +134,19 @@ def list_receivables_cursor(
     current_user: CurrentUser,
     db: Annotated[Session, Depends(get_db)],
     assignor_id: uuid.UUID | None = None,
+    drawee_id: uuid.UUID | None = None,
+    status: str | None = None,
+    invoice_key: str | None = None,
     after: str | None = None,
     page_size: int = 20,
 ) -> CursorPage[ReceivableResponse]:
-    receivables, next_cursor = list_available_cursor(db=db, assignor_id=assignor_id, after=after, page_size=page_size)
+    receivables, next_cursor = receivable_service.receivable_repository.list_available_cursor(
+        db=db,
+        assignor_id=assignor_id,
+        drawee_id=drawee_id,
+        status=status,
+        invoice_key=invoice_key,
+        after=after,
+        page_size=page_size,
+    )
     return CursorPage(items=[_receivable_response(r) for r in receivables], next_cursor=next_cursor)
