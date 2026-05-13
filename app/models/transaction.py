@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,6 +14,8 @@ class Transaction(Base):
 
     __table_args__ = (
         CheckConstraint("term_days > 0", name="chk_transactions_term_positive"),
+        Index("ix_transactions_batch_id", "batch_id"),
+        Index("ix_transactions_liquidated_at", "liquidated_at"),
         CheckConstraint("present_value > 0", name="chk_transactions_present_value_positive"),
         CheckConstraint(
             """

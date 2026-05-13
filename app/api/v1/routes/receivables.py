@@ -83,36 +83,29 @@ def list_receivables(
     page: int = 1,
     page_size: int = 20,
 ) -> list[ReceivableResponse]:
-    from app.models.company import Company
-    from app.models.product_type import ProductType
-
     receivables, _ = list_available(db=db, assignor_id=assignor_id, page=page, page_size=page_size)
 
-    result = []
-    for r in receivables:
-        assignor = db.query(Company).filter(Company.id == r.assignor_id).first()
-        drawee = db.query(Company).filter(Company.id == r.drawee_id).first()
-        product_type = db.query(ProductType).filter(ProductType.id == r.product_type_id).first()
-        result.append(
-            ReceivableResponse(
-                id=r.id,
-                assignor=CompanyResponse.model_validate(assignor),
-                drawee=CompanyResponse.model_validate(drawee),
-                product_type=product_type,
-                invoice_key=r.invoice_key,
-                invoice_number=r.invoice_number,
-                series=r.series,
-                issued_at=r.issued_at,
-                installment_number=r.installment_number,
-                products_value=r.products_value,
-                discount_value=r.discount_value,
-                freight_value=r.freight_value,
-                other_value=r.other_value,
-                face_value=r.face_value,
-                currency_code=r.currency_code,
-                due_date=r.due_date,
-                status=r.status,
-                created_at=r.created_at,
-            )
+    # joinedload(assignor/drawee/product_type) already applied in list_available — zero N+1
+    return [
+        ReceivableResponse(
+            id=r.id,
+            assignor=CompanyResponse.model_validate(r.assignor),
+            drawee=CompanyResponse.model_validate(r.drawee),
+            product_type=r.product_type,
+            invoice_key=r.invoice_key,
+            invoice_number=r.invoice_number,
+            series=r.series,
+            issued_at=r.issued_at,
+            installment_number=r.installment_number,
+            products_value=r.products_value,
+            discount_value=r.discount_value,
+            freight_value=r.freight_value,
+            other_value=r.other_value,
+            face_value=r.face_value,
+            currency_code=r.currency_code,
+            due_date=r.due_date,
+            status=r.status,
+            created_at=r.created_at,
         )
-    return result
+        for r in receivables
+    ]

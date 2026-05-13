@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Date, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey as FK
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.company import Company
+    from app.models.product_type import ProductType
 
 
 class Receivable(Base):
@@ -20,13 +28,16 @@ class Receivable(Base):
         ),
         CheckConstraint("face_value > 0", name="chk_receivables_face_value_positive"),
         CheckConstraint("assignor_id <> drawee_id", name="chk_receivables_assignor_drawee_different"),
+        Index("ix_receivables_assignor_id", "assignor_id"),
+        Index("ix_receivables_status", "status"),
+        Index("ix_receivables_due_date", "due_date"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     xml_upload_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    assignor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    drawee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    product_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    assignor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), FK("companies.id"), nullable=False)
+    drawee_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), FK("companies.id"), nullable=False)
+    product_type_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), FK("product_types.id"), nullable=False)
 
     invoice_key: Mapped[str] = mapped_column(String(44), nullable=False)
     invoice_number: Mapped[str] = mapped_column(String(9), nullable=False)
@@ -46,3 +57,7 @@ class Receivable(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="available")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+
+    assignor: Mapped[Company] = relationship("Company", foreign_keys=[assignor_id], lazy="select")
+    drawee: Mapped[Company] = relationship("Company", foreign_keys=[drawee_id], lazy="select")
+    product_type: Mapped[ProductType] = relationship("ProductType", lazy="select")

@@ -1,8 +1,12 @@
 import uuid
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.batch import Batch
+
+
+def _eager() -> list:
+    return [joinedload(Batch.assignor)]
 
 
 def create(db: Session, batch: Batch) -> Batch:
@@ -12,7 +16,7 @@ def create(db: Session, batch: Batch) -> Batch:
 
 
 def get_by_id(db: Session, batch_id: uuid.UUID) -> Batch | None:
-    return db.query(Batch).filter(Batch.id == batch_id).first()
+    return db.query(Batch).options(*_eager()).filter(Batch.id == batch_id).first()
 
 
 def list_by_assignor(
@@ -25,5 +29,5 @@ def list_by_assignor(
     if assignor_id:
         q = q.filter(Batch.assignor_id == assignor_id)
     total = q.count()
-    items = q.order_by(Batch.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    items = q.options(*_eager()).order_by(Batch.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return items, total
