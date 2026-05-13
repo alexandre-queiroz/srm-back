@@ -73,6 +73,7 @@ def collect_rate(db: Session, from_currency: str = "USD", to_currency: str = "BR
                 f"Ambas as fontes falharam para {from_currency}/{to_currency}. Taxa marcada como stale."
             )
 
+        _mark_latest_stale(db, from_currency, to_currency)
         record = ExchangeRate(
             from_currency=from_currency,
             to_currency=to_currency,
@@ -132,6 +133,7 @@ def get_current_rate(db: Session, from_currency: str = "USD", to_currency: str =
 
 
 def set_rate_manual(db: Session, rate: Decimal, from_currency: str = "USD", to_currency: str = "BRL") -> ExchangeRate:
+    _mark_latest_stale(db, from_currency, to_currency)
     record = ExchangeRate(
         from_currency=from_currency,
         to_currency=to_currency,
