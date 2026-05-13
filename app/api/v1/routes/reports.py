@@ -20,7 +20,7 @@ DbDep = Annotated[Session, Depends(get_db)]
     response_model=SettlementReportResponse,
     summary="Extrato de Liquidação Analítico",
     description=(
-        "Retorna o histórico de liquidações com filtros por período, cedente e moeda. " "Usa SQL Nativo otimizado."
+        "Retorna o histórico de liquidações com filtros por período, cedente e moeda. Usa SQL Nativo otimizado."
     ),
 )
 def get_settlement_report(
