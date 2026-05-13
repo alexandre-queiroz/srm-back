@@ -4,21 +4,16 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Column, ForeignKey, Index, Integer, String, Table
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.associations import batch_items
+from app.models.base import Base, utcnow
 
 if TYPE_CHECKING:
     from app.models.company import Company
-
-batch_items = Table(
-    "batch_items",
-    Base.metadata,
-    Column("batch_id", UUID(as_uuid=True), ForeignKey("batches.id"), primary_key=True),
-    Column("receivable_id", UUID(as_uuid=True), ForeignKey("receivables.id"), primary_key=True),
-)
+    from app.models.receivable import Receivable
 
 
 class Batch(Base):
@@ -39,8 +34,10 @@ class Batch(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     rejection_reasons: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
 
     assignor: Mapped[Company] = relationship("Company", foreign_keys=[assignor_id], lazy="select")
-    receivables = relationship("Receivable", secondary=batch_items, lazy="select")
+    receivables: Mapped[list[Receivable]] = relationship(
+        "Receivable", secondary=batch_items, back_populates="batches", lazy="select"
+    )

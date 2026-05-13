@@ -1,8 +1,7 @@
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 
-from app.schemas.base import AppSchema
+from app.schemas.base import AppSchema, FinancialDecimal
 from app.schemas.company import CompanyResponse
 from app.schemas.product_type import ProductTypeResponse
 
@@ -19,11 +18,11 @@ class ReceivableResponse(AppSchema):
     issued_at: date
     installment_number: str
 
-    products_value: Decimal
-    discount_value: Decimal
-    freight_value: Decimal
-    other_value: Decimal
-    face_value: Decimal
+    products_value: FinancialDecimal
+    discount_value: FinancialDecimal
+    freight_value: FinancialDecimal
+    other_value: FinancialDecimal
+    face_value: FinancialDecimal
     currency_code: str
     due_date: date
 

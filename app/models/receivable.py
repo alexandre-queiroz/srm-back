@@ -10,9 +10,11 @@ from sqlalchemy import ForeignKey as FK
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.associations import batch_items
+from app.models.base import Base, utcnow
 
 if TYPE_CHECKING:
+    from app.models.batch import Batch
     from app.models.company import Company
     from app.models.product_type import ProductType
 
@@ -56,8 +58,11 @@ class Receivable(Base):
     xml_storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="available")
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
 
     assignor: Mapped[Company] = relationship("Company", foreign_keys=[assignor_id], lazy="select")
     drawee: Mapped[Company] = relationship("Company", foreign_keys=[drawee_id], lazy="select")
     product_type: Mapped[ProductType] = relationship("ProductType", lazy="select")
+    batches: Mapped[list[Batch]] = relationship(
+        "Batch", secondary=batch_items, back_populates="receivables", lazy="select"
+    )

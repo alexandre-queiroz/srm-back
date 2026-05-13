@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Numeric, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, utcnow
 
 
 class ProductType(Base):
@@ -16,5 +16,5 @@ class ProductType(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     spread: Mapped[Decimal] = mapped_column(Numeric(10, 8), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)

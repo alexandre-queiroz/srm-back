@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
+from app.schemas.base import FinancialDecimal
 from app.schemas.exchange_rate import ExchangeRateResponse
 from app.services.exchange_rate_service import (
     ExchangeRateError,
@@ -47,7 +47,7 @@ def trigger_collect(current_user: CurrentUser, db: DbDep) -> ExchangeRateRespons
 def manual_rate(
     current_user: CurrentUser,
     db: DbDep,
-    rate: Decimal,
+    rate: FinancialDecimal,
 ) -> ExchangeRateResponse:
     if rate <= 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Taxa deve ser positiva.")

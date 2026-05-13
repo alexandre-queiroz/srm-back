@@ -6,7 +6,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
-from app.models.batch import Batch, batch_items
+from app.models.associations import batch_items
+from app.models.batch import Batch
 from app.models.receivable import Receivable
 from app.models.transaction import Transaction
 from app.repositories import batch_repository, receivable_repository
