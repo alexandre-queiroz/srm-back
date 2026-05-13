@@ -5,7 +5,7 @@ from sqlalchemy import CheckConstraint, Integer, String, Text
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, utcnow
 
 
 class XmlUpload(Base):
@@ -20,4 +20,4 @@ class XmlUpload(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     xml_storage_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     receivables_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)

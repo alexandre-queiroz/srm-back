@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, CheckConstraint, Numeric, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, utcnow
 
 
 class ExchangeRate(Base):
@@ -21,4 +21,4 @@ class ExchangeRate(Base):
     source: Mapped[str] = mapped_column(String(20), nullable=False)
     is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     collected_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)

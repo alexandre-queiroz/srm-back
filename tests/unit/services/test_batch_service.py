@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.batch_service import BatchError, create_batch, preview_batch
+from app.services.batch_service import BatchError, ConcurrencyError, confirm_batch, create_batch, preview_batch
 
 
 def _make_receivable(
@@ -13,6 +13,7 @@ def _make_receivable(
     assignor_id=None,
     status="available",
     product_type_id=None,
+    currency_code="BRL",
 ):
     r = MagicMock()
     r.id = receivable_id or uuid.uuid4()
@@ -21,11 +22,25 @@ def _make_receivable(
     r.status = status
     r.face_value = Decimal("10000.00")
     r.due_date = date(2027, 1, 1)
-    r.currency_code = "BRL"
+    r.currency_code = currency_code
     r.product_type_id = product_type_id or uuid.uuid4()
     r.invoice_key = "35260111222333000181550010001000011123456780"
     r.installment_number = "001"
     return r
+
+
+def _make_pricing_result(pv="9500.00"):
+    from app.services.pricing_service import PricingResult
+
+    return PricingResult(
+        face_value=Decimal("10000.00"),
+        present_value=Decimal(pv),
+        term_days=120,
+        base_rate_annual=Decimal("0.1375"),
+        spread_annual=Decimal("0.025"),
+        base_rate_daily=Decimal("0.000355"),
+        spread_daily=Decimal("0.000068"),
+    )
 
 
 class TestCreateBatch:
@@ -47,7 +62,7 @@ class TestCreateBatch:
 
     def test_wrong_assignor_raises(self):
         assignor_id = uuid.uuid4()
-        receivable = _make_receivable(assignor_id=uuid.uuid4())  # different assignor
+        receivable = _make_receivable(assignor_id=uuid.uuid4())
         with patch("app.services.batch_service.receivable_repository.get_by_id", return_value=receivable):
             with pytest.raises(BatchError, match="não pertence ao cedente"):
                 create_batch(
@@ -116,17 +131,7 @@ class TestPreviewBatch:
         r2 = _make_receivable(assignor_id=assignor_id)
         batch = self._make_batch(receivables=[r1, r2])
 
-        from app.services.pricing_service import PricingResult
-
-        pricing_result = PricingResult(
-            face_value=Decimal("10000.00"),
-            present_value=Decimal("9500.00"),
-            term_days=120,
-            base_rate_annual=Decimal("0.1375"),
-            spread_annual=Decimal("0.025"),
-            base_rate_daily=Decimal("0.000355"),
-            spread_daily=Decimal("0.000068"),
-        )
+        pricing_result = _make_pricing_result("9500.00")
 
         with (
             patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
@@ -141,3 +146,117 @@ class TestPreviewBatch:
         assert preview.total_face_value == Decimal("20000.00")
         assert preview.total_present_value == Decimal("19000.00")
         assert len(preview.items) == 2
+
+
+class TestConfirmBatch:
+    def _make_batch(self, status="pending", version=0, receivables=None):
+        batch = MagicMock()
+        batch.id = uuid.uuid4()
+        batch.assignor_id = uuid.uuid4()
+        batch.status = status
+        batch.version = version
+        batch.receivables = receivables or []
+        return batch
+
+    def _make_db(self, rowcount=1):
+        db = MagicMock()
+        execute_result = MagicMock()
+        execute_result.rowcount = rowcount
+        db.execute.return_value = execute_result
+        return db
+
+    def test_batch_not_found_raises(self):
+        with patch("app.services.batch_service.batch_repository.get_by_id", return_value=None):
+            with pytest.raises(BatchError, match="não encontrado"):
+                confirm_batch(MagicMock(), batch_id=uuid.uuid4(), user_id=uuid.uuid4(), expected_version=0)
+
+    def test_wrong_status_raises(self):
+        batch = self._make_batch(status="approved")
+        with patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch):
+            with pytest.raises(BatchError, match="não pode ser confirmado"):
+                confirm_batch(MagicMock(), batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
+
+    def test_concurrency_error_when_version_mismatch(self):
+        assignor_id = uuid.uuid4()
+        r = _make_receivable(assignor_id=assignor_id, currency_code="BRL")
+        batch = self._make_batch(version=0, receivables=[r])
+        db = self._make_db(rowcount=0)  # simulates version mismatch → 0 rows updated
+
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch(
+                "app.services.batch_service.pricing_service.price_receivable",
+                return_value=_make_pricing_result(),
+            ),
+        ):
+            with pytest.raises(ConcurrencyError, match="modificado por outro processo"):
+                confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
+
+    def test_confirm_brl_batch_no_fx_needed(self):
+        assignor_id = uuid.uuid4()
+        r = _make_receivable(assignor_id=assignor_id, currency_code="BRL")
+        batch = self._make_batch(version=0, receivables=[r])
+        db = self._make_db(rowcount=1)
+
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch(
+                "app.services.batch_service.pricing_service.price_receivable",
+                return_value=_make_pricing_result("9500.00"),
+            ),
+        ):
+            confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
+
+        assert r.status == "anticipated"
+        db.commit.assert_called_once()
+
+        # Verify Transaction was bulk-added without FX fields
+        added_txn = db.add_all.call_args[0][0][0]
+        assert added_txn.exchange_rate_id is None
+        assert added_txn.exchange_rate_used is None
+        assert added_txn.present_value == Decimal("9500.00")
+        assert added_txn.instrument_currency == "BRL"
+        assert added_txn.settlement_currency == "BRL"
+
+    def test_confirm_usd_batch_converts_to_brl(self):
+        assignor_id = uuid.uuid4()
+        r = _make_receivable(assignor_id=assignor_id, currency_code="USD")
+        batch = self._make_batch(version=0, receivables=[r])
+        db = self._make_db(rowcount=1)
+
+        fx_record = MagicMock()
+        fx_record.id = uuid.uuid4()
+        fx_record.rate = Decimal("5.20")
+
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch(
+                "app.services.batch_service.pricing_service.price_receivable",
+                return_value=_make_pricing_result("9500.00"),
+            ),
+            patch("app.services.batch_service.get_current_rate", return_value=fx_record),
+        ):
+            confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
+
+        added_txn = db.add_all.call_args[0][0][0]
+        # 9500.00 USD * 5.20 = 49400.00 BRL
+        assert added_txn.present_value == Decimal("49400.00")
+        assert added_txn.exchange_rate_id == fx_record.id
+        assert added_txn.exchange_rate_used == Decimal("5.20")
+        assert added_txn.instrument_currency == "USD"
+        assert added_txn.settlement_currency == "BRL"
+
+    def test_stale_fx_raises_batch_error(self):
+        from app.services.exchange_rate_service import StaleRateError
+
+        assignor_id = uuid.uuid4()
+        r = _make_receivable(assignor_id=assignor_id, currency_code="USD")
+        batch = self._make_batch(version=0, receivables=[r])
+        db = self._make_db(rowcount=1)
+
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch("app.services.batch_service.get_current_rate", side_effect=StaleRateError("stale")),
+        ):
+            with pytest.raises(BatchError, match="Taxa de câmbio indisponível"):
+                confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)

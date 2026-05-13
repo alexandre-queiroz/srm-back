@@ -77,6 +77,11 @@ O fluxo de trabalho seguiu esta ordem:
 - **Consistência de idioma no banco** — não sinalizou proativamente a mistura de português e inglês nas colunas
 - **Over-engineering de observabilidade** — sugeriu infraestrutura local antes de considerar serviços gerenciados
 - **Status do recebível** — primeira versão usava `pending/anticipated` sem o estado intermediário `in_batch`, que é necessário para bloquear o recebível durante o processamento do lote
+- **N+1 queries nas listagens** — rotas faziam uma query separada por `Company` dentro de um loop; para 20 recebíveis na tela, a API fazia 60 chamadas ao banco; corrigido com `joinedload()` nos repositórios e bulk load via `IN`
+- **Taxa base buscada N vezes** — `_get_base_rate` era chamado dentro do loop de precificação de cada recebível do lote; otimizado com `create_batch_strategy()` que pré-busca uma vez e repassa a estratégia já inicializada
+- **Foreign Keys ausentes em `Receivable`** — campos `assignor_id`, `drawee_id` e `product_type_id` não tinham `ForeignKey()` declarado; o banco não impedia registros órfãos; adicionados na migração `20260513_d33b210d3994`
+- **Race condition na criação de lotes** — `create_batch` verificava o status `available` sem bloquear a linha; dois operadores simultâneos podiam colocar o mesmo recebível em dois lotes diferentes; corrigido com `SELECT FOR UPDATE`
+- **Ausência de índices** — a migração inicial não criou nenhum `Index`; colunas de filtragem frequente (`status`, `assignor_id`, `due_date`) eram escaneadas em full table scan; corrigido com 8 índices na migração `20260513_d33b210d3994`
 
 ---
 

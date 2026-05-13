@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
-from app.repositories.receivable_repository import list_available
+from app.repositories.receivable_repository import list_available, list_available_cursor
+from app.schemas.base import CursorPage
 from app.schemas.company import CompanyResponse
 from app.schemas.receivable import ReceivableResponse, ReceivableUploadResponse
 from app.services import receivable_service
@@ -14,6 +15,29 @@ from app.services import receivable_service
 router = APIRouter(prefix="/receivables", tags=["receivables"])
 
 MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _receivable_response(r) -> ReceivableResponse:
+    return ReceivableResponse(
+        id=r.id,
+        assignor=CompanyResponse.model_validate(r.assignor),
+        drawee=CompanyResponse.model_validate(r.drawee),
+        product_type=r.product_type,
+        invoice_key=r.invoice_key,
+        invoice_number=r.invoice_number,
+        series=r.series,
+        issued_at=r.issued_at,
+        installment_number=r.installment_number,
+        products_value=r.products_value,
+        discount_value=r.discount_value,
+        freight_value=r.freight_value,
+        other_value=r.other_value,
+        face_value=r.face_value,
+        currency_code=r.currency_code,
+        due_date=r.due_date,
+        status=r.status,
+        created_at=r.created_at,
+    )
 
 
 @router.post(
@@ -83,36 +107,23 @@ def list_receivables(
     page: int = 1,
     page_size: int = 20,
 ) -> list[ReceivableResponse]:
-    from app.models.company import Company
-    from app.models.product_type import ProductType
-
     receivables, _ = list_available(db=db, assignor_id=assignor_id, page=page, page_size=page_size)
+    # joinedload(assignor/drawee/product_type) already applied in list_available — zero N+1
+    return [_receivable_response(r) for r in receivables]
 
-    result = []
-    for r in receivables:
-        assignor = db.query(Company).filter(Company.id == r.assignor_id).first()
-        drawee = db.query(Company).filter(Company.id == r.drawee_id).first()
-        product_type = db.query(ProductType).filter(ProductType.id == r.product_type_id).first()
-        result.append(
-            ReceivableResponse(
-                id=r.id,
-                assignor=CompanyResponse.model_validate(assignor),
-                drawee=CompanyResponse.model_validate(drawee),
-                product_type=product_type,
-                invoice_key=r.invoice_key,
-                invoice_number=r.invoice_number,
-                series=r.series,
-                issued_at=r.issued_at,
-                installment_number=r.installment_number,
-                products_value=r.products_value,
-                discount_value=r.discount_value,
-                freight_value=r.freight_value,
-                other_value=r.other_value,
-                face_value=r.face_value,
-                currency_code=r.currency_code,
-                due_date=r.due_date,
-                status=r.status,
-                created_at=r.created_at,
-            )
-        )
-    return result
+
+@router.get(
+    "/cursor",
+    response_model=CursorPage[ReceivableResponse],
+    summary="Listar recebíveis com keyset pagination",
+    description="Use `after` (next_cursor da página anterior). Keyset pagination: O(K) em qualquer profundidade.",
+)
+def list_receivables_cursor(
+    current_user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+    assignor_id: uuid.UUID | None = None,
+    after: str | None = None,
+    page_size: int = 20,
+) -> CursorPage[ReceivableResponse]:
+    receivables, next_cursor = list_available_cursor(db=db, assignor_id=assignor_id, after=after, page_size=page_size)
+    return CursorPage(items=[_receivable_response(r) for r in receivables], next_cursor=next_cursor)

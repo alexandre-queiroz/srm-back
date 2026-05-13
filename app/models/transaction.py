@@ -2,11 +2,11 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, utcnow
 
 
 class Transaction(Base):
@@ -14,6 +14,8 @@ class Transaction(Base):
 
     __table_args__ = (
         CheckConstraint("term_days > 0", name="chk_transactions_term_positive"),
+        Index("ix_transactions_batch_id", "batch_id"),
+        Index("ix_transactions_liquidated_at", "liquidated_at"),
         CheckConstraint("present_value > 0", name="chk_transactions_present_value_positive"),
         CheckConstraint(
             """
@@ -46,5 +48,5 @@ class Transaction(Base):
     )
     exchange_rate_used: Mapped[Decimal | None] = mapped_column(Numeric(15, 8), nullable=True)
 
-    liquidated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
-    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
+    liquidated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
