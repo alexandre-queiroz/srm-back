@@ -10,7 +10,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-setup_observability()
+setup_observability(app)
 app.include_router(router)
 
 
