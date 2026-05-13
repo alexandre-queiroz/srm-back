@@ -30,6 +30,7 @@ def _batch_response(batch) -> BatchResponse:
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
         status=batch.status,
+        version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(batch.receivables),
         created_at=batch.created_at,
