@@ -11,6 +11,10 @@ class BatchCreate(AppSchema):
     receivable_ids: list[uuid.UUID]
 
 
+class BatchConfirm(AppSchema):
+    expected_version: int
+
+
 class BatchPreviewItem(AppSchema):
     receivable_id: uuid.UUID
     invoice_key: str

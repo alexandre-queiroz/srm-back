@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
 from app.repositories import batch_repository
-from app.repositories.company_repository import get_by_id as get_company
 from app.schemas.batch import (
+    BatchConfirm,
     BatchCreate,
     BatchDetailResponse,
     BatchPreviewItem,
@@ -17,18 +17,23 @@ from app.schemas.batch import (
 )
 from app.schemas.company import CompanyResponse
 from app.services import batch_service
-from app.services.batch_service import BatchError
+from app.services.batch_service import BatchError, ConcurrencyError
 
 router = APIRouter(prefix="/batches", tags=["batches"])
 
 DbDep = Annotated[Session, Depends(get_db)]
 
 
-def _company_response(db: Session, company_id: uuid.UUID) -> CompanyResponse:
-    c = get_company(db, company_id)
-    if c is None:
-        raise HTTPException(status_code=404, detail=f"Empresa {company_id} não encontrada.")
-    return CompanyResponse.model_validate(c)
+def _batch_response(batch) -> BatchResponse:
+    return BatchResponse(
+        id=batch.id,
+        assignor=CompanyResponse.model_validate(batch.assignor),
+        status=batch.status,
+        rejection_reasons=batch.rejection_reasons,
+        total_receivables=len(batch.receivables),
+        created_at=batch.created_at,
+        updated_at=batch.updated_at,
+    )
 
 
 @router.post(
@@ -52,16 +57,9 @@ def create_batch(
     except BatchError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
-    assignor = _company_response(db, batch.assignor_id)
-    return BatchResponse(
-        id=batch.id,
-        assignor=assignor,
-        status=batch.status,
-        rejection_reasons=batch.rejection_reasons,
-        total_receivables=len(batch.receivables),
-        created_at=batch.created_at,
-        updated_at=batch.updated_at,
-    )
+    # Reload with eager data after commit so relationships are available
+    batch = batch_repository.get_by_id(db, batch.id)
+    return _batch_response(batch)
 
 
 @router.get(
@@ -79,27 +77,31 @@ def preview_batch(
     except BatchError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
-    assignor = _company_response(db, preview.assignor_id)
+    batch = batch_repository.get_by_id(db, batch_id)
 
-    items = []
-    for item in preview.items:
-        drawee = _company_response(db, item.drawee_id)
-        items.append(
-            BatchPreviewItem(
-                receivable_id=item.receivable_id,
-                invoice_key=item.invoice_key,
-                installment_number=item.installment_number,
-                drawee=drawee,
-                face_value=item.face_value,
-                currency_code=item.currency_code,
-                term_days=item.term_days,
-                present_value=item.present_value,
-            )
+    # Bulk-load all drawee companies in one query to avoid N+1
+    from app.models.company import Company
+
+    drawee_ids = list({item.drawee_id for item in preview.items})
+    drawees = {c.id: c for c in db.query(Company).filter(Company.id.in_(drawee_ids)).all()}
+
+    items = [
+        BatchPreviewItem(
+            receivable_id=item.receivable_id,
+            invoice_key=item.invoice_key,
+            installment_number=item.installment_number,
+            drawee=CompanyResponse.model_validate(drawees[item.drawee_id]),
+            face_value=item.face_value,
+            currency_code=item.currency_code,
+            term_days=item.term_days,
+            present_value=item.present_value,
         )
+        for item in preview.items
+    ]
 
     return BatchPreviewResponse(
         batch_id=preview.batch_id,
-        assignor=assignor,
+        assignor=CompanyResponse.model_validate(batch.assignor),
         total_receivables=preview.total_receivables,
         total_face_value=preview.total_face_value,
         total_present_value=preview.total_present_value,
@@ -114,6 +116,7 @@ def preview_batch(
 )
 def confirm_batch(
     batch_id: uuid.UUID,
+    payload: BatchConfirm,
     current_user: CurrentUser,
     db: DbDep,
 ) -> BatchResponse:
@@ -122,20 +125,15 @@ def confirm_batch(
             db=db,
             batch_id=batch_id,
             user_id=current_user.id,
+            expected_version=payload.expected_version,
         )
+    except ConcurrencyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except BatchError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
-    assignor = _company_response(db, batch.assignor_id)
-    return BatchResponse(
-        id=batch.id,
-        assignor=assignor,
-        status=batch.status,
-        rejection_reasons=batch.rejection_reasons,
-        total_receivables=len(batch.receivables),
-        created_at=batch.created_at,
-        updated_at=batch.updated_at,
-    )
+    batch = batch_repository.get_by_id(db, batch.id)
+    return _batch_response(batch)
 
 
 @router.get(
@@ -150,27 +148,14 @@ def list_batches(
     page: int = 1,
     page_size: int = 20,
 ) -> list[BatchResponse]:
+    # joinedload(Batch.assignor) already applied in the repository — zero N+1
     batches, _ = batch_repository.list_by_assignor(
         db=db,
         assignor_id=assignor_id,
         page=page,
         page_size=page_size,
     )
-    result = []
-    for batch in batches:
-        assignor = _company_response(db, batch.assignor_id)
-        result.append(
-            BatchResponse(
-                id=batch.id,
-                assignor=assignor,
-                status=batch.status,
-                rejection_reasons=batch.rejection_reasons,
-                total_receivables=len(batch.receivables),
-                created_at=batch.created_at,
-                updated_at=batch.updated_at,
-            )
-        )
-    return result
+    return [_batch_response(b) for b in batches]
 
 
 @router.get(
@@ -183,57 +168,60 @@ def get_batch(
     current_user: CurrentUser,
     db: DbDep,
 ) -> BatchDetailResponse:
+    from app.models.company import Company
     from app.models.transaction import Transaction
 
     batch = batch_repository.get_by_id(db, batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail=f"Lote {batch_id} não encontrado.")
 
-    assignor = _company_response(db, batch.assignor_id)
-
     if batch.status == "approved":
         transactions = db.query(Transaction).filter(Transaction.batch_id == batch_id).all()
         txn_by_receivable = {t.receivable_id: t for t in transactions}
-        items = []
-        for r in batch.receivables:
-            txn = txn_by_receivable.get(r.id)
-            drawee = _company_response(db, r.drawee_id)
-            items.append(
-                BatchPreviewItem(
-                    receivable_id=r.id,
-                    invoice_key=r.invoice_key,
-                    installment_number=r.installment_number,
-                    drawee=drawee,
-                    face_value=r.face_value,
-                    currency_code=r.currency_code,
-                    term_days=txn.term_days if txn else 0,
-                    present_value=txn.present_value if txn else r.face_value,
-                )
+
+        # Bulk-load drawees in one query
+        drawee_ids = list({r.drawee_id for r in batch.receivables})
+        drawees = {c.id: c for c in db.query(Company).filter(Company.id.in_(drawee_ids)).all()}
+
+        items = [
+            BatchPreviewItem(
+                receivable_id=r.id,
+                invoice_key=r.invoice_key,
+                installment_number=r.installment_number,
+                drawee=CompanyResponse.model_validate(drawees[r.drawee_id]),
+                face_value=r.face_value,
+                currency_code=r.currency_code,
+                term_days=txn_by_receivable[r.id].term_days if r.id in txn_by_receivable else 0,
+                present_value=txn_by_receivable[r.id].present_value if r.id in txn_by_receivable else r.face_value,
             )
+            for r in batch.receivables
+        ]
     else:
         try:
             preview = batch_service.preview_batch(db=db, batch_id=batch_id)
         except BatchError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
-        items = []
-        for item in preview.items:
-            drawee = _company_response(db, item.drawee_id)
-            items.append(
-                BatchPreviewItem(
-                    receivable_id=item.receivable_id,
-                    invoice_key=item.invoice_key,
-                    installment_number=item.installment_number,
-                    drawee=drawee,
-                    face_value=item.face_value,
-                    currency_code=item.currency_code,
-                    term_days=item.term_days,
-                    present_value=item.present_value,
-                )
+
+        drawee_ids = list({item.drawee_id for item in preview.items})
+        drawees = {c.id: c for c in db.query(Company).filter(Company.id.in_(drawee_ids)).all()}
+
+        items = [
+            BatchPreviewItem(
+                receivable_id=item.receivable_id,
+                invoice_key=item.invoice_key,
+                installment_number=item.installment_number,
+                drawee=CompanyResponse.model_validate(drawees[item.drawee_id]),
+                face_value=item.face_value,
+                currency_code=item.currency_code,
+                term_days=item.term_days,
+                present_value=item.present_value,
             )
+            for item in preview.items
+        ]
 
     return BatchDetailResponse(
         id=batch.id,
-        assignor=assignor,
+        assignor=CompanyResponse.model_validate(batch.assignor),
         status=batch.status,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(items),

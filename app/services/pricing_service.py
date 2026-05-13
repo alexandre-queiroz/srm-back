@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -11,53 +12,6 @@ ANNUAL_TO_DAILY = Decimal("365")
 
 class PricingError(Exception):
     pass
-
-
-def _get_base_rate(db: Session) -> tuple[Decimal, Decimal]:
-    param = db.query(SystemParam).filter(SystemParam.key == "base_rate_annual").first()
-    if param is None:
-        raise PricingError("Parâmetro 'base_rate_annual' não encontrado. Execute o seed.")
-    annual = param.value
-    daily = (1 + annual) ** (Decimal("1") / ANNUAL_TO_DAILY) - 1
-    return daily, annual
-
-
-def _get_spread(db: Session, product_type_id) -> Decimal:
-    pt = (
-        db.query(ProductType)
-        .filter(
-            ProductType.id == product_type_id,
-            ProductType.is_active == True,  # noqa: E712
-        )
-        .first()
-    )
-    if pt is None:
-        raise PricingError(f"ProductType {product_type_id} não encontrado ou inativo.")
-    # Convert annual spread to daily
-    annual = pt.spread
-    daily = (1 + annual) ** (Decimal("1") / ANNUAL_TO_DAILY) - 1
-    return daily, pt.spread
-
-
-def calculate_term_days(due_date: date, reference_date: date | None = None) -> int:
-    ref = reference_date or date.today()
-    days = (due_date - ref).days
-    return max(days, 1)
-
-
-def calculate_present_value(
-    face_value: Decimal,
-    term_days: int,
-    base_rate_daily: Decimal,
-    spread_daily: Decimal,
-) -> Decimal:
-    """
-    VP = VF / (1 + base_rate_daily + spread_daily) ^ term_days
-    Rates are daily equivalents of annual rates.
-    """
-    factor = (1 + base_rate_daily + spread_daily) ** Decimal(str(term_days))
-    pv = face_value / factor
-    return pv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 class PricingResult:
@@ -81,25 +35,142 @@ class PricingResult:
         self.discount = face_value - present_value
 
 
+# ---------------------------------------------------------------------------
+# Strategy interface
+# ---------------------------------------------------------------------------
+
+
+class PricingStrategy(ABC):
+    @abstractmethod
+    def price(
+        self,
+        db: Session,
+        face_value: Decimal,
+        term_days: int,
+        product_type_id,
+    ) -> PricingResult:
+        """Return a fully populated PricingResult."""
+
+
+# ---------------------------------------------------------------------------
+# Concrete strategies
+# ---------------------------------------------------------------------------
+
+
+class CompoundDiscountStrategy(PricingStrategy):
+    """
+    VP = VF / (1 + base_rate_daily + spread_daily) ^ term_days
+
+    Base rate is read from SystemParam('base_rate_annual').
+    Spread is read from the ProductType record.
+    Pass ``prefetched_base_rate`` when pricing many items in a loop to avoid
+    repeated reads of the same system parameter row.
+    """
+
+    def __init__(self, prefetched_base_rate: tuple[Decimal, Decimal] | None = None) -> None:
+        self._prefetched_base_rate = prefetched_base_rate
+
+    def price(self, db: Session, face_value: Decimal, term_days: int, product_type_id) -> PricingResult:
+        base_rate_daily, base_rate_annual = self._prefetched_base_rate or _get_base_rate(db)
+        spread_daily, spread_annual = _get_spread(db, product_type_id)
+        pv = calculate_present_value(face_value, term_days, base_rate_daily, spread_daily)
+        return PricingResult(
+            face_value=face_value,
+            present_value=pv,
+            term_days=term_days,
+            base_rate_annual=base_rate_annual,
+            spread_annual=spread_annual,
+            base_rate_daily=base_rate_daily,
+            spread_daily=spread_daily,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Strategy registry
+# ---------------------------------------------------------------------------
+
+_DEFAULT_STRATEGY: PricingStrategy = CompoundDiscountStrategy()
+
+
+def get_strategy(product_type_id=None) -> PricingStrategy:  # noqa: ARG001
+    """
+    Returns the pricing strategy for a given product type.
+    Currently all product types use CompoundDiscountStrategy; extend this
+    registry when new formula types are introduced.
+    """
+    return _DEFAULT_STRATEGY
+
+
+def create_batch_strategy(db: Session) -> CompoundDiscountStrategy:
+    """
+    Returns a CompoundDiscountStrategy with the base rate pre-fetched.
+    Use this when pricing many receivables in a single request/transaction
+    to avoid N identical queries against system_params.
+    """
+    return CompoundDiscountStrategy(prefetched_base_rate=_get_base_rate(db))
+
+
+# ---------------------------------------------------------------------------
+# Pure calculation helpers (stateless, easy to unit-test)
+# ---------------------------------------------------------------------------
+
+
+def _get_base_rate(db: Session) -> tuple[Decimal, Decimal]:
+    param = db.query(SystemParam).filter(SystemParam.key == "base_rate_annual").first()
+    if param is None:
+        raise PricingError("Parâmetro 'base_rate_annual' não encontrado. Execute o seed.")
+    annual = param.value
+    daily = (1 + annual) ** (Decimal("1") / ANNUAL_TO_DAILY) - 1
+    return daily, annual
+
+
+def _get_spread(db: Session, product_type_id) -> tuple[Decimal, Decimal]:
+    pt = (
+        db.query(ProductType)
+        .filter(
+            ProductType.id == product_type_id,
+            ProductType.is_active == True,  # noqa: E712
+        )
+        .first()
+    )
+    if pt is None:
+        raise PricingError(f"ProductType {product_type_id} não encontrado ou inativo.")
+    annual = pt.spread
+    daily = (1 + annual) ** (Decimal("1") / ANNUAL_TO_DAILY) - 1
+    return daily, annual
+
+
+def calculate_term_days(due_date: date, reference_date: date | None = None) -> int:
+    ref = reference_date or date.today()
+    days = (due_date - ref).days
+    return max(days, 1)
+
+
+def calculate_present_value(
+    face_value: Decimal,
+    term_days: int,
+    base_rate_daily: Decimal,
+    spread_daily: Decimal,
+) -> Decimal:
+    factor = (1 + base_rate_daily + spread_daily) ** Decimal(str(term_days))
+    pv = face_value / factor
+    return pv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+# ---------------------------------------------------------------------------
+# Public API — delegates to the registered strategy
+# ---------------------------------------------------------------------------
+
+
 def price_receivable(
     db: Session,
     face_value: Decimal,
     due_date: date,
     product_type_id,
     reference_date: date | None = None,
+    strategy: PricingStrategy | None = None,
 ) -> PricingResult:
-    base_rate_daily, base_rate_annual = _get_base_rate(db)
-    spread_daily, spread_annual = _get_spread(db, product_type_id)
+    if strategy is None:
+        strategy = get_strategy(product_type_id)
     term_days = calculate_term_days(due_date, reference_date)
-
-    pv = calculate_present_value(face_value, term_days, base_rate_daily, spread_daily)
-
-    return PricingResult(
-        face_value=face_value,
-        present_value=pv,
-        term_days=term_days,
-        base_rate_annual=base_rate_annual,
-        spread_annual=spread_annual,
-        base_rate_daily=base_rate_daily,
-        spread_daily=spread_daily,
-    )
+    return strategy.price(db, face_value, term_days, product_type_id)

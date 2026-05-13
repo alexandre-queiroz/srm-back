@@ -1,8 +1,9 @@
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy import update as sa_update
 from sqlalchemy.orm import Session
 
 from app.models.batch import Batch, batch_items
@@ -10,9 +11,15 @@ from app.models.receivable import Receivable
 from app.models.transaction import Transaction
 from app.repositories import batch_repository, receivable_repository
 from app.services import pricing_service
+from app.services.exchange_rate_service import ExchangeRateError, StaleRateError, get_current_rate
+from app.services.pricing_service import create_batch_strategy
 
 
 class BatchError(Exception):
+    pass
+
+
+class ConcurrencyError(Exception):
     pass
 
 
@@ -51,7 +58,8 @@ def create_batch(
 
     receivables: list[Receivable] = []
     for rid in receivable_ids:
-        r = receivable_repository.get_by_id(db, rid)
+        # SELECT FOR UPDATE prevents two concurrent requests from claiming the same receivable
+        r = receivable_repository.get_by_id(db, rid, for_update=True)
         if r is None:
             raise BatchError(f"Recebível {rid} não encontrado.")
         if r.assignor_id != assignor_id:
@@ -131,6 +139,7 @@ def confirm_batch(
     db: Session,
     batch_id: uuid.UUID,
     user_id: uuid.UUID,
+    expected_version: int,
     reference_date=None,
 ) -> Batch:
     batch = batch_repository.get_by_id(db, batch_id)
@@ -139,6 +148,19 @@ def confirm_batch(
     if batch.status != "pending":
         raise BatchError(f"Lote em status '{batch.status}' não pode ser confirmado.")
 
+    # Fetch FX rate once if any receivable is not in BRL
+    fx_record = None
+    if any(r.currency_code != "BRL" for r in batch.receivables):
+        try:
+            fx_record = get_current_rate(db)
+        except (StaleRateError, ExchangeRateError) as exc:
+            raise BatchError(f"Taxa de câmbio indisponível: {exc}") from exc
+
+    # Pre-fetch base rate once; all receivables in a batch share the same system parameter
+    batch_strategy = create_batch_strategy(db)
+
+    # Price all receivables (read-only DB queries) before acquiring the lock
+    priced: list[tuple[Receivable, object, Decimal, uuid.UUID | None, Decimal | None]] = []
     for r in batch.receivables:
         result = pricing_service.price_receivable(
             db=db,
@@ -146,25 +168,46 @@ def confirm_batch(
             due_date=r.due_date,
             product_type_id=r.product_type_id,
             reference_date=reference_date,
+            strategy=batch_strategy,
         )
-        txn = Transaction(
-            batch_id=batch.id,
-            receivable_id=r.id,
-            face_value=r.face_value,
-            present_value=result.present_value,
-            term_days=result.term_days,
-            spread_used=result.spread_annual,
-            base_rate_used=result.base_rate_annual,
-            instrument_currency=r.currency_code,
-            settlement_currency="BRL",
-            liquidated_at=datetime.utcnow(),
-        )
-        db.add(txn)
-        r.status = "anticipated"
+        if r.currency_code != "BRL" and fx_record is not None:
+            pv_settlement = (result.present_value * fx_record.rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            ex_rate_id = fx_record.id
+            ex_rate_used = fx_record.rate
+        else:
+            pv_settlement = result.present_value
+            ex_rate_id = None
+            ex_rate_used = None
+        priced.append((r, result, pv_settlement, ex_rate_id, ex_rate_used))
 
-    batch.status = "approved"
-    batch.version += 1
-    batch.updated_at = datetime.utcnow()
+    # Atomic optimistic lock: update only if version still matches
+    update_result = db.execute(
+        sa_update(Batch)
+        .where(Batch.id == batch_id, Batch.version == expected_version)
+        .values(status="approved", version=expected_version + 1, updated_at=datetime.now(UTC))
+    )
+    if update_result.rowcount == 0:
+        raise ConcurrencyError("Lote foi modificado por outro processo. Recarregue e tente novamente.")
+
+    # Lock acquired — apply all writes
+    for r, result, pv_settlement, ex_rate_id, ex_rate_used in priced:
+        db.add(
+            Transaction(
+                batch_id=batch.id,
+                receivable_id=r.id,
+                face_value=r.face_value,
+                present_value=pv_settlement,
+                term_days=result.term_days,
+                spread_used=result.spread_annual,
+                base_rate_used=result.base_rate_annual,
+                instrument_currency=r.currency_code,
+                settlement_currency="BRL",
+                exchange_rate_id=ex_rate_id,
+                exchange_rate_used=ex_rate_used,
+                liquidated_at=datetime.now(UTC),
+            )
+        )
+        r.status = "anticipated"
 
     db.commit()
     db.refresh(batch)
