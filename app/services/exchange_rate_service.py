@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import httpx
@@ -83,9 +83,14 @@ def _mark_latest_stale(db: Session) -> None:
 
 
 def get_latest(db: Session, from_currency: str = "USD", to_currency: str = "BRL") -> ExchangeRate | None:
+    today = datetime.combine(date.today(), datetime.min.time(), tzinfo=UTC)
     return (
         db.query(ExchangeRate)
-        .filter(ExchangeRate.from_currency == from_currency, ExchangeRate.to_currency == to_currency)
+        .filter(
+            ExchangeRate.from_currency == from_currency,
+            ExchangeRate.to_currency == to_currency,
+            ExchangeRate.collected_at < today,
+        )
         .order_by(ExchangeRate.collected_at.desc())
         .first()
     )
