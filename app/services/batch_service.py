@@ -146,7 +146,7 @@ def confirm_batch(
     batch = batch_repository.get_by_id(db, batch_id)
     if batch is None:
         raise BatchError(f"Lote {batch_id} não encontrado.")
-    if batch.status != "pending":
+    if batch.status not in ("pending", "queued"):
         raise BatchError(f"Lote em status '{batch.status}' não pode ser confirmado.")
 
     # Fetch FX rate once if any receivable is not in BRL
