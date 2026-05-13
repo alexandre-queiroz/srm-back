@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
 from app.api.v1.router import router
 from app.core.observability import setup_observability
@@ -11,6 +12,7 @@ app = FastAPI(
 )
 
 setup_observability(app)
+app.add_middleware(OpenTelemetryMiddleware)
 app.include_router(router)
 
 
