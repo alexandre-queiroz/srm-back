@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.observability import setup_observability
+from app.core.observability import close_observability, setup_observability
 from app.models.batch import Batch
 from app.services.batch_service import BatchError, ConcurrencyError, confirm_batch
 
@@ -116,6 +116,7 @@ def run() -> None:
                 break
             time.sleep(1)
 
+    close_observability()
     logger.info("Worker stopped.")
 
 
