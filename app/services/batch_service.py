@@ -59,14 +59,13 @@ def create_batch(
 
     receivables: list[Receivable] = []
     for rid in receivable_ids:
-        # SELECT FOR UPDATE prevents two concurrent requests from claiming the same receivable
-        r = receivable_repository.get_by_id(db, rid, for_update=True)
+        r = receivable_repository.get_by_id(db, rid)
         if r is None:
             raise BatchError(f"Recebível {rid} não encontrado.")
         if r.assignor_id != assignor_id:
             raise BatchError(f"Recebível {rid} não pertence ao cedente {assignor_id}.")
-        if r.status != "available":
-            raise BatchError(f"Recebível {rid} não está disponível (status={r.status}).")
+        if r.status in ("anticipated", "invalid"):
+            raise BatchError(f"Recebível {rid} não pode ser incluído em lote (status={r.status}).")
         receivables.append(r)
 
     batch = Batch(
@@ -79,7 +78,6 @@ def create_batch(
 
     for r in receivables:
         db.execute(batch_items.insert().values(batch_id=batch.id, receivable_id=r.id))
-        r.status = "in_batch"
 
     db.commit()
     db.refresh(batch)
@@ -247,7 +245,31 @@ def confirm_batch(
     if update_result.rowcount == 0:
         raise ConcurrencyError("Lote foi modificado por outro processo. Recarregue e tente novamente.")
 
-    # Lock acquired — build all Transaction objects then bulk-add in one flush
+    # With the lock held, re-check each receivable (FOR UPDATE) to detect concurrent anticipation
+    conflicts: dict[str, str] = {}
+    for r, _, _, _, _ in priced:
+        locked = db.query(Receivable).filter(Receivable.id == r.id).with_for_update().first()
+        if locked is None or locked.status != "available":
+            conflicts[str(r.id)] = f"status={locked.status if locked else 'not_found'}"
+
+    if conflicts:
+        rejection_reasons = {"conflicts": conflicts, "reason": "receivable_already_anticipated"}
+        db.execute(
+            sa_update(Batch)
+            .where(Batch.id == batch_id)
+            .values(
+                status="rejected",
+                rejection_reasons=rejection_reasons,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        batch.status = "rejected"
+        batch.rejection_reasons = rejection_reasons
+        db.commit()
+        db.refresh(batch)
+        return batch
+
+    # All receivables still available — build transactions and confirm
     transactions = []
     for r, result, pv_settlement, ex_rate_id, ex_rate_used in priced:
         transactions.append(
