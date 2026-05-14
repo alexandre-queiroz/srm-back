@@ -44,6 +44,8 @@ class BatchResponse(AppSchema):
     version: int
     rejection_reasons: dict[str, Any] | None
     total_receivables: int
+    total_face_value_brl: FinancialDecimal
+    total_present_value_brl: FinancialDecimal
     created_at: datetime
     updated_at: datetime
 

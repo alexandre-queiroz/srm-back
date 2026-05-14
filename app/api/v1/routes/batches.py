@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,35 @@ router = APIRouter(prefix="/batches", tags=["batches"])
 DbDep = Annotated[Session, Depends(get_db)]
 
 
-def _batch_response(batch) -> BatchResponse:
+def _batch_response(db: Session, batch) -> BatchResponse:
+    from sqlalchemy import func
+
+    from app.models.transaction import Transaction
+
+    total_face = Decimal("0")
+    total_present = Decimal("0")
+
+    if batch.status == "approved":
+        # Sum from transactions
+        res = (
+            db.query(
+                func.sum(Transaction.face_value).label("face"),
+                func.sum(Transaction.present_value).label("present"),
+            )
+            .filter(Transaction.batch_id == batch.id)
+            .first()
+        )
+        if res and res.face:
+            total_face = res.face
+            total_present = res.present
+    else:
+        # Just sum face values of receivables (simple estimate for list view)
+        # Note: this doesn't handle FX conversion for pending batches in the list view
+        # for performance reasons, but provides a baseline.
+        total_face = sum(r.face_value for r in batch.receivables)
+        # For pending, we don't show a total present value in the list as it's not simulated yet
+        total_present = Decimal("0")
+
     return BatchResponse(
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
@@ -33,6 +62,8 @@ def _batch_response(batch) -> BatchResponse:
         version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(batch.receivables),
+        total_face_value_brl=total_face,
+        total_present_value_brl=total_present,
         created_at=batch.created_at,
         updated_at=batch.updated_at,
     )
@@ -61,7 +92,7 @@ def create_batch(
 
     # Reload with eager data after commit so relationships are available
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
 
 
 @router.post(
@@ -188,7 +219,7 @@ def confirm_batch(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
 
 
 @router.post(
@@ -210,7 +241,7 @@ def queue_batch_endpoint(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
 
 
 @router.get(
@@ -234,7 +265,7 @@ def list_batches(
         page=page,
         page_size=page_size,
     )
-    return [_batch_response(b) for b in batches]
+    return [_batch_response(db, b) for b in batches]
 
 
 @router.get(
@@ -258,7 +289,7 @@ def list_batches_cursor(
         after=after,
         page_size=page_size,
     )
-    return CursorPage(items=[_batch_response(b) for b in batches], next_cursor=next_cursor)
+    return CursorPage(items=[_batch_response(db, b) for b in batches], next_cursor=next_cursor)
 
 
 @router.get(
