@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.v1.deps import CurrentUser
 from app.core.database import get_db
 from app.repositories import report_repository
-from app.schemas.report import SettlementReportResponse
+from app.schemas.report import SettlementBatchReportResponse, SettlementReportResponse
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -44,3 +44,27 @@ def get_settlement_report(
     )
 
     return SettlementReportResponse(items=items, summary=summary, page=page, page_size=page_size)
+
+
+@router.get(
+    "/settlements/by-batch",
+    response_model=SettlementBatchReportResponse,
+    summary="Extrato de Liquidação por Lote",
+)
+def get_settlement_report_by_batch(
+    current_user: CurrentUser,
+    db: DbDep,
+    start_date: datetime | None = Query(None, description="Data inicial (filtro sobre batches.processed_at)"),
+    end_date: datetime | None = Query(None, description="Data final (filtro sobre batches.processed_at)"),
+    assignor_id: uuid.UUID | None = Query(None, description="ID do cedente"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+) -> SettlementBatchReportResponse:
+    return report_repository.get_settlement_report_by_batch(
+        db=db,
+        start_date=start_date,
+        end_date=end_date,
+        assignor_id=assignor_id,
+        page=page,
+        page_size=page_size,
+    )

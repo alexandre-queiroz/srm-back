@@ -22,6 +22,10 @@ def list_companies(
     social_reason_op: str | None = Query(
         None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
     ),
+    fantasy_name: str | None = Query(None),
+    fantasy_name_op: str | None = Query(
+        None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
+    ),
     cnpj: str | None = Query(None),
     cnpj_op: str | None = Query(
         None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
@@ -29,7 +33,14 @@ def list_companies(
     limit: int = Query(100, le=500),
 ) -> list[CompanyResponse]:
     rows = company_repository.list_companies(
-        db, social_reason=social_reason, social_reason_op=social_reason_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
+        db,
+        social_reason=social_reason,
+        social_reason_op=social_reason_op,
+        fantasy_name=fantasy_name,
+        fantasy_name_op=fantasy_name_op,
+        cnpj=cnpj,
+        cnpj_op=cnpj_op,
+        limit=limit,
     )
     return [
         CompanyResponse.model_validate(c).model_copy(update={"available_receivables_count": count}) for c, count in rows

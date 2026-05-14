@@ -21,6 +21,8 @@ def list_companies(
     db: Session,
     social_reason: str | None = None,
     social_reason_op: str | None = None,
+    fantasy_name: str | None = None,
+    fantasy_name_op: str | None = None,
     cnpj: str | None = None,
     cnpj_op: str | None = None,
     limit: int = 100,
@@ -34,6 +36,8 @@ def list_companies(
     q = db.query(Company, available_count.label("available_receivables_count"))
     if social_reason:
         q = q.filter(str_filter(Company.social_reason, social_reason, social_reason_op))
+    if fantasy_name:
+        q = q.filter(str_filter(Company.fantasy_name, fantasy_name, fantasy_name_op))
     if cnpj:
         q = q.filter(str_filter(Company.cnpj, cnpj, cnpj_op))
     return q.order_by(Company.social_reason).limit(limit).all()

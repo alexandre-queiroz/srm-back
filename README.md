@@ -4,6 +4,57 @@ Motor de precificação e liquidação de recebíveis para a SRM Asset. Respons�
 
 ---
 
+## 📁 Estrutura do Projeto
+
+```text
+app/
+├── api/v1/routes/        # Endpoints REST (um arquivo por domínio)
+│   ├── auth.py           # Login e /me
+│   ├── batches.py        # Lotes — criação, preview, fila, liquidação
+│   ├── companies.py      # Cedentes e sacados
+│   ├── currencies.py     # Moedas
+│   ├── dashboard.py      # KPIs e métricas da home
+│   ├── exchange_rates.py # Histórico e coleta de câmbio
+│   ├── product_types.py  # Tipos de recebível e parâmetros do sistema
+│   ├── receivables.py    # Recebíveis — listagem e upload de XML
+│   └── reports.py        # Extrato de liquidação (SQL otimizado)
+├── core/
+│   ├── config.py         # Settings via Pydantic BaseSettings
+│   ├── database.py       # Engine SQLAlchemy e sessão
+│   ├── observability.py  # OpenTelemetry → Axiom
+│   └── security.py       # JWT, hashing de senha
+├── models/               # Models SQLAlchemy 2.0 (uma classe por tabela)
+├── repositories/         # Queries ao banco — sem lógica de negócio
+│   ├── _filters.py       # Helpers de filtragem reutilizáveis
+│   └── cursor.py         # Paginação por cursor
+├── schemas/              # Pydantic — request/response por domínio
+├── services/             # Regras de negócio e orquestração
+│   ├── batch_service.py       # Validação, precificação e liquidação de lotes
+│   ├── exchange_rate_service.py
+│   ├── pricing_service.py     # Strategy Pattern por tipo de recebível
+│   ├── receivable_service.py
+│   ├── storage_service.py     # Upload de XMLs
+│   └── xml_parser_service.py  # Parsing de NF-e
+├── workers/
+│   └── lote_processor.py # Worker de processamento assíncrono de lotes
+└── jobs/
+    └── exchange_rate_job.py  # Job diário de coleta de câmbio
+
+migrations/               # Alembic — versionamento do schema
+scripts/
+├── seed.py               # Dados iniciais (usuário admin, parâmetros, tipos)
+├── generate_nfe.py       # Gerador de XMLs de NF-e fake
+└── generate_mass_data.py # Gerador de volume para testes de carga
+tests/                    # Testes unitários e de integração
+docs/
+├── adrs/                 # Decisões arquiteturais
+├── c4-diagrams.md
+├── er-diagram.md
+└── schema.sql
+```
+
+---
+
 ## Requisitos Funcionais
 
 ### Autenticação
@@ -182,18 +233,9 @@ git cherry-pick <fix-commit-hash>
 
 ---
 
-## Fora do Escopo
+## Premissas e Escopo
 
-| Item                                 | Motivo                                                                  |
-| ------------------------------------ | ----------------------------------------------------------------------- |
-| IaC (Terraform, Kubernetes)          | Vercel + RDS gerenciado cobre o deploy sem complexidade adicional       |
-| Multi-fundo                          | Não requerido pelo desafio — documentado em ADR                         |
-| Limite de crédito por cedente/sacado | Não requerido pelo desafio — documentado em ADR                         |
-| Score de risco por sacado            | Spread orientado por tipo de ativo conforme especificação               |
-| Integração real SEFAZ                | Substituída pelo gerador de XMLs no escopo do desafio                   |
-| Níveis de acesso por usuário         | Não requerido — documentado em ADR                                      |
-| Integração BACEN                     | Substituída por controle interno de status da nota — documentado em ADR |
-| Agrupamento por fundo no extrato     | Multi-fundo fora do escopo do prazo atual — implementar se houver tempo |
+Diversas decisões foram tomadas onde a proposta original era ambígua ou silente — multi-fundos, multi-tenant, níveis de acesso, bureau de crédito, câmbio D-1, entre outras. Cada uma está documentada com raciocínio e caminho de evolução em [`docs/design-assumptions.md`](./docs/design-assumptions.md).
 
 ---
 
@@ -236,7 +278,9 @@ A decisão de entregar na Vercel + Neon foi tomada pelo prazo e pela ausência d
 
 ## Decisões Arquiteturais
 
-As decisões que envolvem trade-offs de negócio e arquitetura estão documentadas em [`docs/adrs/`](./docs/adrs/).
+As decisões que envolvem trade-offs de implementação estão documentadas em [`docs/adrs/`](./docs/adrs/).
+
+As premissas assumidas onde a proposta era ambígua ou silente estão documentadas em [`docs/design-assumptions.md`](./docs/design-assumptions.md).
 
 > **Nota:** Em um projeto com múltiplos times, ADRs deveriam residir em uma fonte única de verdade (Confluence, Notion, repositório de documentação). O trade-off de mantê-los aqui é aceito dado o escopo reduzido do projeto.
 
