@@ -32,7 +32,7 @@ def generate_mass_data(num_assignors=5, num_drawees=20, num_receivables=200):
         # 2. Create Assignors
         assignors = []
         for i in range(num_assignors):
-            name = f"Cedente {i+1} Ltda"
+            name = f"Cedente {i + 1} Ltda"
             cnpj = generate_cnpj()
             company = db.query(Company).filter(Company.cnpj == cnpj).first()
             if not company:
@@ -45,7 +45,7 @@ def generate_mass_data(num_assignors=5, num_drawees=20, num_receivables=200):
         # 3. Create Drawees
         drawees = []
         for i in range(num_drawees):
-            name = f"Sacado {i+1} S.A."
+            name = f"Sacado {i + 1} S.A."
             cnpj = generate_cnpj()
             company = db.query(Company).filter(Company.cnpj == cnpj).first()
             if not company:
