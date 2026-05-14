@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.services.exchange_rate_service import ExchangeRateError, StaleRateError, collect_rate
+from app.services.exchange_rate_service import ExchangeRateError, StaleRateError, collect_all_rates
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -21,7 +21,7 @@ def _verify_cron(authorization: str = Header(...)) -> None:
 @router.get(
     "/collect-rates",
     status_code=status.HTTP_200_OK,
-    summary="Cron: coleta taxa USD/BRL",
+    summary="Cron: coleta taxas de todas as moedas ativas",
     description="Chamado pelo Vercel Cron. Protegido por CRON_SECRET.",
 )
 def cron_collect_rates(
@@ -29,8 +29,11 @@ def cron_collect_rates(
     _: None = Depends(_verify_cron),
 ) -> dict:
     try:
-        record = collect_rate(db)
-        return {"status": "ok", "rate": str(record.rate), "source": record.source}
+        records = collect_all_rates(db)
+        return {
+            "status": "ok",
+            "collected": [{"pair": f"{r.from_currency}/{r.to_currency}", "rate": str(r.rate)} for r in records],
+        }
     except StaleRateError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     except ExchangeRateError as exc:

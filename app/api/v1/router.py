@@ -4,6 +4,7 @@ from app.api.v1.routes import (
     auth,
     batches,
     companies,
+    currencies,
     exchange_rates,
     internal,
     product_types,
@@ -20,4 +21,5 @@ router.include_router(exchange_rates.router)
 router.include_router(internal.router)
 router.include_router(reports.router)
 router.include_router(companies.router)
+router.include_router(currencies.router)
 router.include_router(product_types.router)

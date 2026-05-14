@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,34 @@ router = APIRouter(prefix="/batches", tags=["batches"])
 DbDep = Annotated[Session, Depends(get_db)]
 
 
-def _batch_response(batch) -> BatchResponse:
+def _batch_response(db: Session, batch) -> BatchResponse:
+    from sqlalchemy import case, func
+
+    from app.models.transaction import Transaction
+
+    total_face = Decimal("0")
+    total_present = Decimal("0")
+
+    if batch.status == "approved":
+        face_brl = case(
+            (Transaction.exchange_rate_used.is_not(None), Transaction.face_value * Transaction.exchange_rate_used),
+            else_=Transaction.face_value,
+        )
+        res = (
+            db.query(
+                func.sum(face_brl).label("face"),
+                func.sum(Transaction.present_value).label("present"),
+            )
+            .filter(Transaction.batch_id == batch.id)
+            .first()
+        )
+        if res and res.face:
+            total_face = res.face
+            total_present = res.present
+    else:
+        total_face = sum((r.face_value for r in batch.receivables), Decimal("0"))
+        total_present = Decimal("0")
+
     return BatchResponse(
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
@@ -33,6 +61,8 @@ def _batch_response(batch) -> BatchResponse:
         version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(batch.receivables),
+        total_face_value_brl=total_face,
+        total_present_value_brl=total_present,
         created_at=batch.created_at,
         updated_at=batch.updated_at,
     )
@@ -61,7 +91,58 @@ def create_batch(
 
     # Reload with eager data after commit so relationships are available
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
+
+
+@router.post(
+    "/simulate",
+    response_model=BatchPreviewResponse,
+    summary="Simulação de precificação (sem persistência)",
+)
+def simulate_batch(
+    payload: BatchCreate,
+    current_user: CurrentUser,
+    db: DbDep,
+) -> BatchPreviewResponse:
+    try:
+        preview = batch_service.simulate_batch(
+            db=db,
+            assignor_id=payload.assignor_id,
+            receivable_ids=payload.receivable_ids,
+        )
+    except BatchError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    from app.models.company import Company
+
+    assignor = db.query(Company).filter(Company.id == payload.assignor_id).first()
+    drawee_ids = list({item.drawee_id for item in preview.items})
+    drawees = {c.id: c for c in db.query(Company).filter(Company.id.in_(drawee_ids)).all()}
+
+    items = [
+        BatchPreviewItem(
+            receivable_id=item.receivable_id,
+            invoice_key=item.invoice_key,
+            installment_number=item.installment_number,
+            drawee=CompanyResponse.model_validate(drawees[item.drawee_id]),
+            face_value=item.face_value,
+            currency_code=item.currency_code,
+            term_days=item.term_days,
+            present_value=item.present_value,
+            base_rate_annual=item.base_rate_annual,
+            spread_annual=item.spread_annual,
+        )
+        for item in preview.items
+    ]
+
+    return BatchPreviewResponse(
+        batch_id=preview.batch_id,
+        assignor=CompanyResponse.model_validate(assignor),
+        total_receivables=preview.total_receivables,
+        total_face_value=preview.total_face_value,
+        total_present_value=preview.total_present_value,
+        items=items,
+    )
 
 
 @router.get(
@@ -137,7 +218,7 @@ def confirm_batch(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
 
 
 @router.post(
@@ -159,7 +240,7 @@ def queue_batch_endpoint(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
     batch = batch_repository.get_by_id(db, batch.id)
-    return _batch_response(batch)
+    return _batch_response(db, batch)
 
 
 @router.get(
@@ -171,6 +252,7 @@ def list_batches(
     current_user: CurrentUser,
     db: DbDep,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[BatchResponse]:
@@ -178,10 +260,11 @@ def list_batches(
     batches, _ = batch_repository.list_by_assignor(
         db=db,
         assignor_id=assignor_id,
+        status=status,
         page=page,
         page_size=page_size,
     )
-    return [_batch_response(b) for b in batches]
+    return [_batch_response(db, b) for b in batches]
 
 
 @router.get(
@@ -194,16 +277,18 @@ def list_batches_cursor(
     current_user: CurrentUser,
     db: DbDep,
     assignor_id: uuid.UUID | None = None,
+    status: str | None = None,
     after: str | None = None,
     page_size: int = 20,
 ) -> CursorPage[BatchResponse]:
     batches, next_cursor = batch_repository.list_by_assignor_cursor(
         db=db,
         assignor_id=assignor_id,
+        status=status,
         after=after,
         page_size=page_size,
     )
-    return CursorPage(items=[_batch_response(b) for b in batches], next_cursor=next_cursor)
+    return CursorPage(items=[_batch_response(db, b) for b in batches], next_cursor=next_cursor)
 
 
 @router.get(
@@ -241,6 +326,8 @@ def get_batch(
                 currency_code=r.currency_code,
                 term_days=txn_by_receivable[r.id].term_days if r.id in txn_by_receivable else 0,
                 present_value=txn_by_receivable[r.id].present_value if r.id in txn_by_receivable else r.face_value,
+                base_rate_annual=txn_by_receivable[r.id].base_rate_used if r.id in txn_by_receivable else 0,
+                spread_annual=txn_by_receivable[r.id].spread_used if r.id in txn_by_receivable else 0,
             )
             for r in batch.receivables
         ]
@@ -263,16 +350,24 @@ def get_batch(
                 currency_code=item.currency_code,
                 term_days=item.term_days,
                 present_value=item.present_value,
+                base_rate_annual=item.base_rate_annual,
+                spread_annual=item.spread_annual,
             )
             for item in preview.items
         ]
+
+    total_face = sum(Decimal(str(item.face_value)) for item in items) if items else Decimal("0")
+    total_present = sum(Decimal(str(item.present_value)) for item in items) if items else Decimal("0")
 
     return BatchDetailResponse(
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
         status=batch.status,
+        version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(items),
+        total_face_value_brl=total_face,
+        total_present_value_brl=total_present,
         created_at=batch.created_at,
         updated_at=batch.updated_at,
         items=items,

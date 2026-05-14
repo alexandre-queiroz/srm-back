@@ -5,6 +5,7 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.receivable import Receivable
+from app.repositories._filters import str_filter
 from app.repositories.cursor import decode_cursor, encode_cursor
 
 
@@ -37,12 +38,27 @@ def get_by_invoice_installment(db: Session, invoice_key: str, installment_number
 def list_available(
     db: Session,
     assignor_id: uuid.UUID | None = None,
+    drawee_id: uuid.UUID | None = None,
+    status: str | None = None,
+    invoice_key: str | None = None,
+    invoice_key_op: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[Receivable], int]:
-    q = db.query(Receivable).filter(Receivable.status == "available")
+    q = db.query(Receivable)
+    if status:
+        q = q.filter(Receivable.status == status)
+    elif not any([assignor_id, drawee_id, invoice_key]):
+        # Default to available if no specific filter is provided to avoid leaking all titles
+        q = q.filter(Receivable.status == "available")
+
     if assignor_id:
         q = q.filter(Receivable.assignor_id == assignor_id)
+    if drawee_id:
+        q = q.filter(Receivable.drawee_id == drawee_id)
+    if invoice_key:
+        q = q.filter(str_filter(Receivable.invoice_key, invoice_key, invoice_key_op))
+
     total = q.count()
     items = (
         q.options(*_eager()).order_by(Receivable.due_date.asc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -53,19 +69,28 @@ def list_available(
 def list_available_cursor(
     db: Session,
     assignor_id: uuid.UUID | None = None,
+    drawee_id: uuid.UUID | None = None,
+    status: str | None = None,
+    invoice_key: str | None = None,
+    invoice_key_op: str | None = None,
     after: str | None = None,
     page_size: int = 20,
 ) -> tuple[list[Receivable], str | None]:
     """
     Keyset pagination sorted by (due_date ASC, id ASC).
-
-    Returns (items, next_cursor). Pass next_cursor as ``after`` to fetch the
-    next page. When next_cursor is None you have reached the last page.
-    O(K) at any depth — no OFFSET scan.
     """
-    q = db.query(Receivable).filter(Receivable.status == "available")
+    q = db.query(Receivable)
+    if status:
+        q = q.filter(Receivable.status == status)
+    elif not any([assignor_id, drawee_id, invoice_key]):
+        q = q.filter(Receivable.status == "available")
+
     if assignor_id:
         q = q.filter(Receivable.assignor_id == assignor_id)
+    if drawee_id:
+        q = q.filter(Receivable.drawee_id == drawee_id)
+    if invoice_key:
+        q = q.filter(str_filter(Receivable.invoice_key, invoice_key, invoice_key_op))
 
     if after:
         raw = decode_cursor(after)

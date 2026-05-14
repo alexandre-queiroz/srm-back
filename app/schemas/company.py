@@ -8,7 +8,8 @@ from app.schemas.base import AppSchema
 
 class CompanyCreate(AppSchema):
     cnpj: str
-    name: str
+    social_reason: str
+    fantasy_name: str | None = None
 
     @field_validator("cnpj")
     @classmethod
@@ -22,5 +23,7 @@ class CompanyCreate(AppSchema):
 class CompanyResponse(AppSchema):
     id: uuid.UUID
     cnpj: str
-    name: str
+    social_reason: str
+    fantasy_name: str | None
     created_at: datetime
+    available_receivables_count: int = 0

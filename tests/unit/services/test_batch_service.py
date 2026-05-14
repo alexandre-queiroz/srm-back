@@ -72,11 +72,11 @@ class TestCreateBatch:
                     receivable_ids=[receivable.id],
                 )
 
-    def test_unavailable_receivable_raises(self):
+    def test_anticipated_receivable_raises(self):
         assignor_id = uuid.uuid4()
-        receivable = _make_receivable(assignor_id=assignor_id, status="in_batch")
+        receivable = _make_receivable(assignor_id=assignor_id, status="anticipated")
         with patch("app.services.batch_service.receivable_repository.get_by_id", return_value=receivable):
-            with pytest.raises(BatchError, match="não está disponível"):
+            with pytest.raises(BatchError, match="não pode ser incluído em lote"):
                 create_batch(
                     MagicMock(),
                     user_id=uuid.uuid4(),
@@ -84,7 +84,7 @@ class TestCreateBatch:
                     receivable_ids=[receivable.id],
                 )
 
-    def test_creates_batch_and_updates_status(self):
+    def test_available_receivable_does_not_change_status(self):
         assignor_id = uuid.uuid4()
         r1 = _make_receivable(assignor_id=assignor_id)
         r2 = _make_receivable(assignor_id=assignor_id)
@@ -100,8 +100,9 @@ class TestCreateBatch:
 
             create_batch(db, user_id=uuid.uuid4(), assignor_id=assignor_id, receivable_ids=[r1.id, r2.id])
 
-        assert r1.status == "in_batch"
-        assert r2.status == "in_batch"
+        # Receivables must remain 'available' — no status lock on batch creation
+        assert r1.status == "available"
+        assert r2.status == "available"
         db.commit.assert_called_once()
 
 
@@ -158,11 +159,15 @@ class TestConfirmBatch:
         batch.receivables = receivables or []
         return batch
 
-    def _make_db(self, rowcount=1):
+    def _make_db(self, rowcount=1, locked_status="available"):
         db = MagicMock()
         execute_result = MagicMock()
         execute_result.rowcount = rowcount
         db.execute.return_value = execute_result
+        # Mock the FOR UPDATE re-check path in confirm_batch
+        locked = MagicMock()
+        locked.status = locked_status
+        db.query.return_value.filter.return_value.with_for_update.return_value.first.return_value = locked
         return db
 
     def test_batch_not_found_raises(self):
@@ -245,6 +250,25 @@ class TestConfirmBatch:
         assert added_txn.exchange_rate_used == Decimal("5.20")
         assert added_txn.instrument_currency == "USD"
         assert added_txn.settlement_currency == "BRL"
+
+    def test_rejects_batch_when_receivable_already_anticipated(self):
+        assignor_id = uuid.uuid4()
+        r = _make_receivable(assignor_id=assignor_id, currency_code="BRL")
+        batch = self._make_batch(version=0, receivables=[r])
+        db = self._make_db(rowcount=1, locked_status="anticipated")
+
+        with (
+            patch("app.services.batch_service.batch_repository.get_by_id", return_value=batch),
+            patch(
+                "app.services.batch_service.pricing_service.price_receivable",
+                return_value=_make_pricing_result(),
+            ),
+        ):
+            result = confirm_batch(db, batch_id=batch.id, user_id=uuid.uuid4(), expected_version=0)
+
+        # Batch should be rejected, not approved, because the receivable was already anticipated
+        assert result.status == "rejected"
+        db.add_all.assert_not_called()
 
     def test_stale_fx_raises_batch_error(self):
         from app.services.exchange_rate_service import StaleRateError

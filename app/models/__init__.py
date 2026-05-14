@@ -1,6 +1,7 @@
 from app.models.base import Base
 from app.models.batch import Batch, batch_items
 from app.models.company import Company
+from app.models.currency import Currency
 from app.models.exchange_rate import ExchangeRate
 from app.models.product_type import ProductType
 from app.models.receivable import Receivable
@@ -14,6 +15,7 @@ __all__ = [
     "Batch",
     "batch_items",
     "Company",
+    "Currency",
     "ExchangeRate",
     "ProductType",
     "Receivable",

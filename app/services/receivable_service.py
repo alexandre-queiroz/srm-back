@@ -95,8 +95,13 @@ def ingest_xml(
 
         for inst in installments:
             try:
-                assignor = company_repository.upsert(db, cnpj=inst.assignor_cnpj, name=inst.assignor_name)
-                drawee = company_repository.upsert(db, cnpj=inst.drawee_cnpj, name=inst.drawee_name)
+                assignor = company_repository.upsert(
+                    db,
+                    cnpj=inst.assignor_cnpj,
+                    social_reason=inst.assignor_social_reason,
+                    fantasy_name=inst.assignor_fantasy_name,
+                )
+                drawee = company_repository.upsert(db, cnpj=inst.drawee_cnpj, social_reason=inst.drawee_social_reason)
 
                 existing = receivable_repository.get_by_invoice_installment(
                     db, inst.invoice_key, inst.installment_number

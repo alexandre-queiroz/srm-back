@@ -18,14 +18,22 @@ DbDep = Annotated[Session, Depends(get_db)]
 def list_companies(
     current_user: CurrentUser,
     db: DbDep,
-    q: str | None = Query(None, description="Busca por nome ou CNPJ"),
-    limit: int = Query(100, le=100),
+    social_reason: str | None = Query(None),
+    social_reason_op: str | None = Query(
+        None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
+    ),
+    cnpj: str | None = Query(None),
+    cnpj_op: str | None = Query(
+        None, description="Operador: startswith, endswith, equal, different, contains (padrão)"
+    ),
+    limit: int = Query(100, le=500),
 ) -> list[CompanyResponse]:
-    """
-    Lista empresas cadastradas no sistema. Útil para popular filtros e selects no frontend.
-    """
-    companies = company_repository.list_companies(db, query=q, limit=limit)
-    return [CompanyResponse.model_validate(c) for c in companies]
+    rows = company_repository.list_companies(
+        db, social_reason=social_reason, social_reason_op=social_reason_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
+    )
+    return [
+        CompanyResponse.model_validate(c).model_copy(update={"available_receivables_count": count}) for c, count in rows
+    ]
 
 
 @router.get("/{company_id}", response_model=CompanyResponse, summary="Detalhes da empresa")
