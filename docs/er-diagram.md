@@ -48,7 +48,8 @@ erDiagram
     companies {
         uuid            id              PK
         varchar(14)     cnpj            UK
-        varchar(255)    name
+        varchar(255)    social_reason
+        varchar(255)    fantasy_name
         timestamptz     created_at
     }
 
