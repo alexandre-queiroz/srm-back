@@ -12,3 +12,9 @@ class TokenResponse(AppSchema):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+class UserMeResponse(AppSchema):
+    id: str
+    name: str
+    email: str
