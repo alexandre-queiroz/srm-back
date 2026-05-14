@@ -7,6 +7,54 @@ from pydantic import Field
 from app.schemas.base import AppSchema
 
 
+class SettlementTransactionItem(AppSchema):
+    transaction_id: uuid.UUID
+    invoice_key: str
+    installment_number: str
+    drawee_name: str
+    drawee_cnpj: str
+    instrument_currency: str
+    face_value: Decimal
+    face_value_brl: Decimal
+    present_value: Decimal
+    exchange_rate_used: Decimal | None
+    term_days: int
+    spread_used: Decimal
+    base_rate_used: Decimal
+    liquidated_at: datetime
+
+
+class SettlementBatchItem(AppSchema):
+    batch_id: uuid.UUID
+    assignor_name: str
+    assignor_cnpj: str
+    processed_at: datetime
+    total_receivables: int
+    total_face_brl: Decimal
+    total_present_brl: Decimal
+    total_discount_brl: Decimal
+    avg_rate_pct: Decimal
+    transactions: list[SettlementTransactionItem]
+
+
+class SettlementBatchSummary(AppSchema):
+    total_batches: int
+    total_receivables: int
+    total_face_brl: Decimal
+    total_present_brl: Decimal
+    total_discount_brl: Decimal
+    avg_rate_pct: Decimal
+
+
+class SettlementBatchReportResponse(AppSchema):
+    items: list[SettlementBatchItem]
+    summary: SettlementBatchSummary
+    page: int
+    page_size: int
+    total_pages: int
+    total_batches: int
+
+
 class SettlementReportItem(AppSchema):
     transaction_id: uuid.UUID
     batch_id: uuid.UUID
