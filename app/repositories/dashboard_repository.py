@@ -40,7 +40,7 @@ def get_dashboard(db: Session) -> dict:
     total_face_brl: Decimal = kpi_row.total_face_brl
 
     if total_face_brl > 0:
-        average_rate_pct = (total_face_brl - total_present_brl) / total_face_brl * 100
+        average_rate_pct = round((total_face_brl - total_present_brl) / total_face_brl * 100, 8)
     else:
         average_rate_pct = Decimal("0")
 
