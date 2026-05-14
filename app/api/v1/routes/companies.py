@@ -32,8 +32,7 @@ def list_companies(
         db, social_reason=social_reason, social_reason_op=social_reason_op, cnpj=cnpj, cnpj_op=cnpj_op, limit=limit
     )
     return [
-        CompanyResponse(**CompanyResponse.model_validate(c).model_dump(), available_receivables_count=count)
-        for c, count in rows
+        CompanyResponse.model_validate(c).model_copy(update={"available_receivables_count": count}) for c, count in rows
     ]
 
 

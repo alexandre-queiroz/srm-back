@@ -27,7 +27,7 @@ DbDep = Annotated[Session, Depends(get_db)]
 
 
 def _batch_response(db: Session, batch) -> BatchResponse:
-    from sqlalchemy import func
+    from sqlalchemy import case, func
 
     from app.models.transaction import Transaction
 
@@ -35,10 +35,13 @@ def _batch_response(db: Session, batch) -> BatchResponse:
     total_present = Decimal("0")
 
     if batch.status == "approved":
-        # Sum from transactions
+        face_brl = case(
+            (Transaction.exchange_rate_used.is_not(None), Transaction.face_value * Transaction.exchange_rate_used),
+            else_=Transaction.face_value,
+        )
         res = (
             db.query(
-                func.sum(Transaction.face_value).label("face"),
+                func.sum(face_brl).label("face"),
                 func.sum(Transaction.present_value).label("present"),
             )
             .filter(Transaction.batch_id == batch.id)
@@ -48,11 +51,7 @@ def _batch_response(db: Session, batch) -> BatchResponse:
             total_face = res.face
             total_present = res.present
     else:
-        # Just sum face values of receivables (simple estimate for list view)
-        # Note: this doesn't handle FX conversion for pending batches in the list view
-        # for performance reasons, but provides a baseline.
-        total_face = sum(r.face_value for r in batch.receivables)
-        # For pending, we don't show a total present value in the list as it's not simulated yet
+        total_face = sum((r.face_value for r in batch.receivables), Decimal("0"))
         total_present = Decimal("0")
 
     return BatchResponse(
@@ -357,6 +356,9 @@ def get_batch(
             for item in preview.items
         ]
 
+    total_face = sum(Decimal(str(item.face_value)) for item in items) if items else Decimal("0")
+    total_present = sum(Decimal(str(item.present_value)) for item in items) if items else Decimal("0")
+
     return BatchDetailResponse(
         id=batch.id,
         assignor=CompanyResponse.model_validate(batch.assignor),
@@ -364,6 +366,8 @@ def get_batch(
         version=batch.version,
         rejection_reasons=batch.rejection_reasons,
         total_receivables=len(items),
+        total_face_value_brl=total_face,
+        total_present_value_brl=total_present,
         created_at=batch.created_at,
         updated_at=batch.updated_at,
         items=items,

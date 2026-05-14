@@ -2,14 +2,14 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.batch import Batch
 from app.repositories.cursor import decode_cursor, encode_cursor
 
 
 def _eager() -> list:
-    return [joinedload(Batch.assignor)]
+    return [joinedload(Batch.assignor), selectinload(Batch.receivables)]
 
 
 def create(db: Session, batch: Batch) -> Batch:
