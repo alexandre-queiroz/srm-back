@@ -19,6 +19,7 @@ class PricingResult:
         self,
         face_value: Decimal,
         present_value: Decimal,
+        present_value_raw: Decimal,
         term_days: int,
         base_rate_annual: Decimal,
         spread_annual: Decimal,
@@ -26,7 +27,11 @@ class PricingResult:
         spread_daily: Decimal,
     ):
         self.face_value = face_value
+        # Rounded to 2 decimal places — use for display and BRL-only settlement.
         self.present_value = present_value
+        # Full-precision PV — use for cross-currency intermediate calculations
+        # to avoid accumulated rounding error before the FX conversion step.
+        self.present_value_raw = present_value_raw
         self.term_days = term_days
         self.base_rate_annual = base_rate_annual
         self.spread_annual = spread_annual
@@ -73,10 +78,12 @@ class CompoundDiscountStrategy(PricingStrategy):
     def price(self, db: Session, face_value: Decimal, term_days: int, product_type_id) -> PricingResult:
         base_rate_daily, base_rate_annual = self._prefetched_base_rate or _get_base_rate(db)
         spread_daily, spread_annual = _get_spread(db, product_type_id)
-        pv = calculate_present_value(face_value, term_days, base_rate_daily, spread_daily)
+        pv_raw = _calculate_present_value_raw(face_value, term_days, base_rate_daily, spread_daily)
+        pv = pv_raw.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         return PricingResult(
             face_value=face_value,
             present_value=pv,
+            present_value_raw=pv_raw,
             term_days=term_days,
             base_rate_annual=base_rate_annual,
             spread_annual=spread_annual,
@@ -146,15 +153,27 @@ def calculate_term_days(due_date: date, reference_date: date | None = None) -> i
     return max(days, 1)
 
 
+def _calculate_present_value_raw(
+    face_value: Decimal,
+    term_days: int,
+    base_rate_daily: Decimal,
+    spread_daily: Decimal,
+) -> Decimal:
+    """Full-precision PV — no rounding. Use for intermediate cross-currency steps."""
+    factor = (1 + base_rate_daily + spread_daily) ** Decimal(str(term_days))
+    return face_value / factor
+
+
 def calculate_present_value(
     face_value: Decimal,
     term_days: int,
     base_rate_daily: Decimal,
     spread_daily: Decimal,
 ) -> Decimal:
-    factor = (1 + base_rate_daily + spread_daily) ** Decimal(str(term_days))
-    pv = face_value / factor
-    return pv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    """Rounded PV (2 decimal places). Public API kept for backward compatibility."""
+    return _calculate_present_value_raw(face_value, term_days, base_rate_daily, spread_daily).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP
+    )
 
 
 # ---------------------------------------------------------------------------
