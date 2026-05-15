@@ -48,5 +48,8 @@ class Transaction(Base):
     )
     exchange_rate_used: Mapped[Decimal | None] = mapped_column(Numeric(15, 8), nullable=True)
 
+    # Who triggered the liquidation.
+    # NULL means the system worker initiated it (sentinel: _SYSTEM_USER_ID in lote_processor).
+    liquidated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     liquidated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=utcnow)

@@ -32,9 +32,11 @@ def _make_receivable(
 def _make_pricing_result(pv="9500.00"):
     from app.services.pricing_service import PricingResult
 
+    pv_decimal = Decimal(pv)
     return PricingResult(
         face_value=Decimal("10000.00"),
-        present_value=Decimal(pv),
+        present_value=pv_decimal,
+        present_value_raw=pv_decimal,
         term_days=120,
         base_rate_annual=Decimal("0.1375"),
         spread_annual=Decimal("0.025"),
